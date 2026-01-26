@@ -12,6 +12,7 @@ import {
     useCameraDevice,
     useCameraPermission,
 } from "react-native-vision-camera";
+import { MenuInteractionOverlay } from "../components/MenuInteractionOverlay";
 
 const OCR_INTERVAL_MS = 100; // Run OCR every 500ms
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
@@ -596,6 +597,18 @@ export default function Index() {
           <View style={styles.processingIndicator}>
             <Text style={styles.processingText}>●</Text>
           </View>
+        )}
+
+        {/* Interaction Overlay - Passes screen-space coordinates and blocks to Gemini Service */}
+        {cameraLayout.width > 0 && (
+          <MenuInteractionOverlay 
+            textBlocks={boundingBoxes.map(b => ({
+              text: b.text,
+              frame: { x: b.x, y: b.y, width: b.width, height: b.height }
+            }))}
+            originalImageWidth={cameraLayout.width}
+            originalImageHeight={cameraLayout.height}
+          />
         )}
       </View>
     </View>
