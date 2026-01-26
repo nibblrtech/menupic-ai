@@ -475,7 +475,15 @@ export default function Index() {
           // Debug: log transformed coordinates
           if (index < 3 && Platform.OS === 'android') {
             console.log(`[Android] Block ${index}: transformed = {x: ${transformed.x.toFixed(1)}, y: ${transformed.y.toFixed(1)}, w: ${transformed.width.toFixed(1)}, h: ${transformed.height.toFixed(1)}}`);
-          }ging logs removed for productionundingBoxes(boxes);
+          }
+
+          return {
+            ...transformed,
+            text: block.text
+          };
+        });
+
+      setBoundingBoxes(boxes);
     } catch (error) {
       console.log("OCR Error:", error);
     } finally {
