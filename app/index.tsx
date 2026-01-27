@@ -4,7 +4,7 @@ import TextRecognition, {
 } from "@react-native-ml-kit/text-recognition";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Dimensions, Platform, StyleSheet, Text, View } from "react-native";
+import { Button, Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
     Camera,
@@ -14,9 +14,6 @@ import {
 } from "react-native-vision-camera";
 import { MenuInteractionOverlay } from "../components/MenuInteractionOverlay";
 
-const OCR_INTERVAL_MS = 100; // Run OCR every 500ms
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("screen");
-
 interface BoundingBox {
   x: number;
   y: number;
@@ -24,6 +21,8 @@ interface BoundingBox {
   height: number;
   text: string;
 }
+
+const OCR_INTERVAL_MS = 500;
 
 // Helper function to transform ML Kit coordinates based on photo orientation and platform
 // 
@@ -51,8 +50,7 @@ function transformCoordinates(
     const isDisplayPortrait = displayHeight > displayWidth;
     const isPhotoPortrait = photoHeight > photoWidth;
     
-    console.log(`[Android Transform] orientation: ${orientation}, photo: ${photoWidth}x${photoHeight}, display: ${displayWidth}x${displayHeight}, isDisplayPortrait: ${isDisplayPortrait}, isPhotoPortrait: ${isPhotoPortrait}`);
-    
+    //console.log(`[Android Transform] orientation: ${orientation}, photo: ${photoWidth}x${photoHeight}, display: ${displayWidth}x${displayHeight}, isDisplayPortrait: ${isDisplayPortrait}, isPhotoPortrait: ${isPhotoPortrait}`);
     // When using takeSnapshot, the snapshot is captured in the current preview orientation
     // ML Kit returns coordinates relative to the snapshot image
     // We need to handle the case where snapshot dimensions don't match display orientation
@@ -249,27 +247,20 @@ function transformCoordinates(
          // If we rotate 180, we get a Landscape image (4224x2376).
          // If we then swap display to Landscape (827x428), we are mapping Landscape Image -> Landscape Display.
          // This *should* work if the raw coordinates are correct relative to that 180-rotated image.
-         
          // Looking at the logs:
          // Raw Frame: x=3622, y=2210 (bottom right quadrant)
          // Rotated 180: x=95, y=96 (top left quadrant)
          // Result: x=18, y=0 (Top Left of screen)
-         
          // If the user is seeing boxes in the wrong place, maybe the 180 rotation is WRONG for this specific
          // "Device Landscape / UI Portrait" combo.
-         
          // If "portrait-upside-down" raw data is actually ALREADY roughly aligned with the camera sensor
          // which is aligned with the screen...?
-         
          // HYPOTHESIS: When (Device=LandscapeLeft/Right) but (UI=Portrait), the "orientation" tag
          // might be misleading relative to how we want to display it on a "SWAPPED" screen.
-         
          // Let's try NO ROTATION (Direct Mapping) and see if that aligns better.
          // If we don't rotate: x=3622, y=2210.
          // Scaled (0.2x): x=700, y=400. (Bottom Right).
-         
          // Let's try 90 degree rotation?
-         
          // Revert to standard 180 rotation for now, but verify effective dims.
           transformedLeft = photoWidth - frame.left - frame.width;
           transformedTop = photoHeight - frame.top - frame.height;
@@ -354,7 +345,6 @@ function transformCoordinates(
   // We need to map these coordinates back into the Portrait system.
   if ((orientation === 'portrait' || orientation === 'portrait-upside-down') && isPhotoLandscape && !isDisplayLandscape) {
      if (isFirstBlock) console.log(`[iOS] Mapping Landscape coordinates back to Portrait container...`);
-     
      const oldX = finalX;
      const oldY = finalY;
      const oldW = finalWidth;
@@ -421,10 +411,13 @@ export default function Index() {
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
+  // Overlay/dialog status to pause OCR and clicks when non-idle
+  const [status, setStatus] = useState<'idle' | 'identifying' | 'generating-image' | 'complete' | 'image-error'>('idle');
 
   // Periodic OCR processing
   const processFrame = useCallback(async () => {
     if (!cameraRef.current || isProcessing || cameraLayout.width === 0) return;
+    if (status !== 'idle') return; // freeze OCR when overlay/dialog is open
 
     try {
       setIsProcessing(true);
@@ -470,12 +463,12 @@ export default function Index() {
           
           // Debug: log transformed coordinates on iOS
           if (index < 3 && Platform.OS === 'ios') {
-            console.log(`[iOS] Block ${index}: transformed = {x: ${transformed.x.toFixed(1)}, y: ${transformed.y.toFixed(1)}, w: ${transformed.width.toFixed(1)}, h: ${transformed.height.toFixed(1)}}`);
+            //console.log(`[iOS] Block ${index}: transformed = {x: ${transformed.x.toFixed(1)}, y: ${transformed.y.toFixed(1)}, w: ${transformed.width.toFixed(1)}, h: ${transformed.height.toFixed(1)}}`);
           }
           
           // Debug: log transformed coordinates
           if (index < 3 && Platform.OS === 'android') {
-            console.log(`[Android] Block ${index}: transformed = {x: ${transformed.x.toFixed(1)}, y: ${transformed.y.toFixed(1)}, w: ${transformed.width.toFixed(1)}, h: ${transformed.height.toFixed(1)}}`);
+            //console.log(`[Android] Block ${index}: transformed = {x: ${transformed.x.toFixed(1)}, y: ${transformed.y.toFixed(1)}, w: ${transformed.width.toFixed(1)}, h: ${transformed.height.toFixed(1)}}`);
           }
 
           return {
@@ -490,7 +483,7 @@ export default function Index() {
     } finally {
       setIsProcessing(false);
     }
-  }, [isProcessing, cameraLayout]);
+  }, [isProcessing, cameraLayout, status]);
 
   // Set up periodic OCR
   useEffect(() => {
@@ -602,6 +595,8 @@ export default function Index() {
         {/* Interaction Overlay - Passes screen-space coordinates and blocks to Gemini Service */}
         {cameraLayout.width > 0 && (
           <MenuInteractionOverlay 
+            status={status}
+            setStatus={setStatus}
             textBlocks={boundingBoxes.map(b => ({
               text: b.text,
               frame: { x: b.x, y: b.y, width: b.width, height: b.height }

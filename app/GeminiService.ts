@@ -1,5 +1,21 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// --- Utility: Logging ---
+const APP_LAUNCH_TIME = Date.now();
+
+const formatLog = (msg: string) => {
+  const now = Date.now();
+  const absolute = new Date(now).toISOString();
+  const relative = now - APP_LAUNCH_TIME;
+  return `[${absolute}] [+${relative}ms] [GeminiService] ${msg}`;
+};
+
+const logger = {
+  log: (msg: string, ...args: any[]) => console.log(formatLog(msg), ...args),
+  warn: (msg: string, ...args: any[]) => console.warn(formatLog(msg), ...args),
+  error: (msg: string, ...args: any[]) => console.error(formatLog(msg), ...args),
+};
+
 export interface TextBlock {
   text: string;
   frame: { x: number; y: number; width: number; height: number };
@@ -11,28 +27,23 @@ export interface DishAnalysisResult {
   price: string;
   nutrients: string;
   imagePrompt: string;
+  generatedImage?: string;
 }
 
 class GeminiService {
-  private genAI: GoogleGenerativeAI | null = null;
+
+    private genAI: GoogleGenerativeAI | null = null;
   private model: any = null;
+  private apiKey: string | null = null;
 
   /**
    * Initializes the Gemini client by fetching the key from our backend.
    */
   private async initialize() {
     if (this.genAI) return;
-
+    
     try {
       // Fetch key from our secure API route
-      // Ensure we're using the correct path. In Expo Router, /api/... routes are available at the root.
-      // We might need an absolute URL if running on a device vs simulator, but usually relative works
-      // if the app is served from the same origin (web). For native, we might need the host.
-      // However, for this prototype, if we are in dev, localhost might work or the machine IP.
-      // If we are strictly client-side calling EAS hosting, we assume the environment
-      // provides the base URL or we use a relative path if it's a web build.
-      // For native, `fetch('/api/gemini-key')` might fail if not configured correctly.
-      // But let's stick to the requested plan.
       const response = await fetch('/api/gemini-key');
       
       if (!response.ok) {
@@ -40,17 +51,16 @@ class GeminiService {
       }
       
       const data = await response.json();
-
+      
       if (data.key) {
+        this.apiKey = data.key;
         this.genAI = new GoogleGenerativeAI(data.key);
-        // "gemini-1.5-flash" is the current standard. 
-        // If 404s persist, ensure the API Key has the "Generative Language API" enabled in Google Cloud Console.
         this.model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       } else {
-        console.error("GeminiService: No API Key returned from server");
+        logger.error("No API Key returned from server");
       }
     } catch (error) {
-      console.error("GeminiService: Failed to fetch API key", error);
+      logger.error("Failed to fetch API key", error);
     }
   }
 
@@ -62,9 +72,14 @@ class GeminiService {
     clickY: number, 
     blocks: TextBlock[]
   ): Promise<DishAnalysisResult | null> {
+    const start = Date.now();
+    logger.log(`identifyDish started at (${clickX}, ${clickY})`);
     
     await this.initialize();
-    if (!this.model) return null;
+    if (!this.model) {
+      logger.warn("identifyDish aborted: Model not initialized.");
+      return null;
+    }
 
     // Filter blocks to reduce token usage (simple heuristic: closer blocks first)
     // You might want to sort these blocks by distance to clickX/Y before sending.
@@ -84,16 +99,13 @@ class GeminiService {
       ${JSON.stringify(relevantBlocks)}
 
       TASK:
-      1. Assemble the Dish Name, Description, and Price for the item closest to the click.
-      2. Infer macro nutrients (e.g., "High Carb", "Gluten Free") based on ingredients.
+      1. Assemble the Dish Name, Description
       3. Generate a descriptive prompt for an AI image generator to visualize this specific food.
 
       RETURN JSON ONLY (No Markdown):
       {
         "dishName": "String",
         "description": "String",
-        "price": "String",
-        "nutrients": "String",
         "imagePrompt": "String"
       }
     `;
@@ -101,13 +113,15 @@ class GeminiService {
     try {
       const result = await this.model.generateContent(prompt);
       const responseText = result.response.text();
-      
       // Cleanup: Gemini sometimes wraps JSON in markdown blocks
       const cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
       
-      return JSON.parse(cleanJson) as DishAnalysisResult;
+      const parsed = JSON.parse(cleanJson) as DishAnalysisResult;
+      
+      logger.log(`identifyDish completed for "${parsed.dishName}" in ${Date.now() - start}ms`);
+      return parsed;
     } catch (error) {
-      console.error("GeminiService Error:", error);
+      logger.error(`identifyDish Error (after ${Date.now() - start}ms):`, error);
       return null;
     }
   }
