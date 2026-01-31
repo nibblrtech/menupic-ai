@@ -4,7 +4,7 @@ import TextRecognition, {
 } from "@react-native-ml-kit/text-recognition";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Platform, StyleSheet, Text, View } from "react-native";
+import { Button, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
     Camera,
@@ -407,6 +407,7 @@ export default function Index() {
   const insets = useSafeAreaInsets();
   const device = useCameraDevice("back");
   const cameraRef = useRef<Camera>(null);
+  const overlayRef = useRef<any>(null);
   
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -567,18 +568,27 @@ export default function Index() {
           video={true}
         />
 
-        {/* Bounding Box Overlay */}
-        <View style={styles.overlayContainer} pointerEvents="none">
+        {/* Bounding Box Overlay - each box is individually pressable */}
+        <View style={styles.overlayContainer} pointerEvents="box-none">
           {boundingBoxes.map((box, index) => (
-            <View
+            <Pressable
               key={index}
-              style={[
+              onPressIn={(evt) => {
+                const locX = evt.nativeEvent.locationX;
+                const locY = evt.nativeEvent.locationY;
+                const windowX = box.x + locX;
+                const windowY = box.y + locY;
+                console.log('[Index] Pressable onPressIn window coords:', { windowX, windowY, boxIndex: index });
+                overlayRef.current?.identifyAtPoint(windowX, windowY);
+              }}
+              style={({ pressed }) => [
                 styles.boundingBox,
                 {
                   left: box.x,
                   top: box.y,
                   width: box.width,
                   height: box.height,
+                  opacity: pressed ? 0.6 : 1,
                 },
               ]}
             />
@@ -595,6 +605,7 @@ export default function Index() {
         {/* Interaction Overlay - Passes screen-space coordinates and blocks to Gemini Service */}
         {cameraLayout.width > 0 && (
           <MenuInteractionOverlay 
+            ref={overlayRef}
             status={status}
             setStatus={setStatus}
             textBlocks={boundingBoxes.map(b => ({

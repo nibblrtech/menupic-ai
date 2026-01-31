@@ -1,15 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Button,
-    GestureResponderEvent,
     Image,
     LayoutChangeEvent,
     Modal,
     ScrollView,
     StyleSheet,
     Text,
-    TouchableWithoutFeedback,
     View
 } from 'react-native';
 import { blackForestLabsService } from '../app/BlackForestLabsService';
@@ -23,13 +21,13 @@ interface Props {
   setStatus: React.Dispatch<React.SetStateAction<'idle' | 'identifying' | 'generating-image' | 'complete' | 'image-error'>>;
 }
 
-export function MenuInteractionOverlay({ 
+export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay({ 
   textBlocks, 
   originalImageWidth, 
   originalImageHeight,
   status,
   setStatus
-}: Props) {
+}: Props, ref: any) {
   const [result, setResult] = useState<DishAnalysisResult | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [viewLayout, setViewLayout] = useState({ width: 0, height: 0 });
@@ -40,9 +38,12 @@ export function MenuInteractionOverlay({
     return () => { mountedRef.current = false; };
   }, []);
 
+  // Client-side cooldown to avoid retrying after quota errors
+  const nextAllowedIdentifyAt = useRef<number>(0);
+
   // Keep a ref to the latest `status` so long-running async loops
   // can see changes without relying on stale closure values.
-  const statusRef = useRef(status);
+  const statusRef = useRef<Props['status']>(status);
   useEffect(() => { statusRef.current = status; }, [status]);
 
   const onLayout = (event: LayoutChangeEvent) => {
@@ -98,23 +99,66 @@ export function MenuInteractionOverlay({
     };
   };
 
-  const handlePress = async (evt: GestureResponderEvent) => {
-    if (status !== 'idle') return;
+  const detectQuotaError = (err: any): { quota: boolean; waitSecs?: number; raw?: string } => {
+    try {
+      const raw = String(err?.message || err || '');
+      let serialized = '';
+      try { serialized = JSON.stringify(err); } catch (_) { serialized = raw; }
+      const combined = (raw + ' ' + serialized).toLowerCase();
+      const quota = /quota|exceeded|429/.test(combined);
+      // look for retryDelay in seconds (e.g. "retryDelay":"15s") or RFC Retry-After
+      const retryMatch = combined.match(/retrydelay"?:"?(\d+)s/i) || combined.match(/retry-after"?:"?(\d+)s?/i) || combined.match(/retry-?after\s*[:=]\s*(\d+)/i);
+      const waitSecs = retryMatch ? Number(retryMatch[1]) : undefined;
+      return { quota, waitSecs, raw: combined };
+    } catch (e) {
+      return { quota: false, raw: String(err) };
+    }
+  };
 
-    const { locationX, locationY } = evt.nativeEvent;
-    const mappedPoint = mapCoordinates(locationX, locationY);
-    if (!mappedPoint) return;
+  // Exposed identify function: accepts image-space coordinates (x,y)
+  const identifyAtPoint = async (imgX: number, imgY: number) => {
+    // imgX/imgY are expected to be window/view coordinates (same coordinate space as textBlocks)
+    console.log('[MenuInteractionOverlay] identifyAtPoint received window coords:', { x: imgX, y: imgY, status: statusRef.current, blocks: textBlocks.length });
+    if (Date.now() < nextAllowedIdentifyAt.current) {
+      const waitMs = Math.max(0, nextAllowedIdentifyAt.current - Date.now());
+      alert(`API quota cooldown in effect. Please retry in ${Math.ceil(waitMs/1000)}s.`);
+      return;
+    }
+
+    if (statusRef.current !== 'idle') return;
 
     try {
       setStatus('identifying');
-      const data = await geminiService.identifyDish(
-        mappedPoint.x,
-        mappedPoint.y,
-        textBlocks
-      );
+      // For debugging, also compute mapped image coords (if applicable)
+      const mapped = mapCoordinates(imgX, imgY);
+      console.log('[MenuInteractionOverlay] mapped point (via mapCoordinates):', mapped);
+
+      let data;
+      try {
+        data = await geminiService.identifyDish(
+          imgX,
+          imgY,
+          textBlocks
+        );
+      } catch (err: any) {
+        console.error('[MenuInteractionOverlay] identifyDish Error:', err);
+        const dq = detectQuotaError(err);
+        if (dq.quota) {
+          const waitSecs = dq.waitSecs ?? 30;
+          alert(`API quota exceeded. Please retry in ${waitSecs} seconds.`);
+          nextAllowedIdentifyAt.current = Date.now() + (waitSecs * 1000);
+          setStatus('idle');
+          return;
+        }
+        // Non-quota error: rethrow to outer catch
+        throw err;
+      }
 
       if (!data) {
-        throw new Error('No dish identified');
+        // No dish identified — inform user and reset
+        alert('No dish identified');
+        setStatus('idle');
+        return;
       }
 
       let generatedImage: string | undefined = undefined;
@@ -133,14 +177,14 @@ export function MenuInteractionOverlay({
           let lastPollError: string | null = null;
 
           while (attempts < maxAttempts) {
-            if (!mountedRef.current || statusRef.current !== 'generating-image') {
+            if (!mountedRef.current || String(statusRef.current) !== 'generating-image') {
               lastPollError = 'cancelled';
               break;
             }
             attempts++;
             try {
               const pollResult = await blackForestLabsService.pollForImage(pollUrl);
-              if (!mountedRef.current || statusRef.current !== 'generating-image') {
+              if (!mountedRef.current || String(statusRef.current) !== 'generating-image') {
                 lastPollError = 'cancelled';
                 break;
               }
@@ -164,7 +208,7 @@ export function MenuInteractionOverlay({
               lastPollError = pollErr?.message || 'Unknown polling error';
             }
             await new Promise(res => setTimeout(res, pollDelay));
-            if (!mountedRef.current || statusRef.current !== 'generating-image') {
+            if (!mountedRef.current || String(statusRef.current) !== 'generating-image') {
               lastPollError = 'cancelled';
               break;
             }
@@ -189,11 +233,22 @@ export function MenuInteractionOverlay({
       setResult({ ...data, generatedImage });
       setStatus('complete');
     } catch (e) {
-      console.error(e);
+      console.error('[MenuInteractionOverlay] Outer identifyAtPoint catch:', e);
+      const dq = detectQuotaError(e);
+      if (dq.quota) {
+        const waitSecs = dq.waitSecs ?? 30;
+        alert(`API quota exceeded. Please retry in ${waitSecs} seconds.`);
+        nextAllowedIdentifyAt.current = Date.now() + (waitSecs * 1000);
+        setStatus('idle');
+        return;
+      }
+
       alert('Failed to analyze dish.');
       setStatus('idle');
     }
   };
+
+  useImperativeHandle(ref, () => ({ identifyAtPoint }));
 
   const closeResult = () => {
     setResult(null);
@@ -202,11 +257,8 @@ export function MenuInteractionOverlay({
   };
 
   return (
-    <View style={styles.container} onLayout={onLayout}>
-      {/* Invisible Touch Layer */}
-      <TouchableWithoutFeedback onPress={handlePress}>
-        <View style={styles.touchArea} />
-      </TouchableWithoutFeedback>
+    <View style={styles.container} onLayout={onLayout} pointerEvents={status === 'idle' ? 'box-none' : 'auto'}>
+      {/* Touches are installed on individual bounding boxes in the parent view. */}
 
       {/* Portal 1: Identification Loading */}
       <Modal transparent visible={status === 'identifying'} animationType="fade">
@@ -281,6 +333,8 @@ export function MenuInteractionOverlay({
     </View>
   );
 }
+
+);
 
 const styles = StyleSheet.create({
   container: {

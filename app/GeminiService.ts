@@ -120,8 +120,14 @@ class GeminiService {
       
       logger.log(`identifyDish completed for "${parsed.dishName}" in ${Date.now() - start}ms`);
       return parsed;
-    } catch (error) {
+    } catch (error: any) {
       logger.error(`identifyDish Error (after ${Date.now() - start}ms):`, error);
+      const raw = String(error?.message || error);
+      const quotaDetected = /quota|exceeded|429/.test(raw.toLowerCase()) || error?.status === 429 || error?.statusCode === 429;
+      if (quotaDetected) {
+        // Propagate quota errors so callers can handle retry/cooldown UI
+        throw error;
+      }
       return null;
     }
   }
