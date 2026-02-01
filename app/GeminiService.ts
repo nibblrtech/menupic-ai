@@ -1,5 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
 // --- Utility: Logging ---
 const APP_LAUNCH_TIME = Date.now();
 
@@ -32,36 +30,15 @@ export interface DishAnalysisResult {
 
 class GeminiService {
 
-    private genAI: GoogleGenerativeAI | null = null;
-  private model: any = null;
-  private apiKey: string | null = null;
-
   /**
-   * Initializes the Gemini client by fetching the key from our backend.
+   * NOTE: We no longer instantiate the Generative AI client in-browser.
+   * The API key must remain server-side. Calls are proxied to
+   * `/api/gemini-proxy` which performs the request using the
+   * `GEMINI_API_KEY` environment variable.
    */
   private async initialize() {
-    if (this.genAI) return;
-    
-    try {
-      // Fetch key from our secure API route
-      const response = await fetch('/api/gemini-key');
-      
-      if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.key) {
-        this.apiKey = data.key;
-        this.genAI = new GoogleGenerativeAI(data.key);
-        this.model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      } else {
-        logger.error("No API Key returned from server");
-      }
-    } catch (error) {
-      logger.error("Failed to fetch API key", error);
-    }
+    // no-op: server-side proxy handles credentials
+    return;
   }
 
   /**
@@ -76,10 +53,6 @@ class GeminiService {
     logger.log(`identifyDish started at (${clickX}, ${clickY})`);
     
     await this.initialize();
-    if (!this.model) {
-      logger.warn("identifyDish aborted: Model not initialized.");
-      return null;
-    }
 
     // Filter blocks to reduce token usage (simple heuristic: closer blocks first)
     // You might want to sort these blocks by distance to clickX/Y before sending.
@@ -111,13 +84,27 @@ class GeminiService {
     `;
 
     try {
-      const result = await this.model.generateContent(prompt);
-      const responseText = result.response.text();
-      // Cleanup: Gemini sometimes wraps JSON in markdown blocks
-      const cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-      
+      const resp = await fetch('/api/gemini-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        logger.error(`identifyDish proxy failed: ${resp.status} ${errText}`);
+        return null;
+      }
+
+      const { text, error } = await resp.json();
+      if (error) {
+        logger.error(`identifyDish proxy returned error: ${error}`);
+        return null;
+      }
+
+      const cleanJson = (text || '').replace(/```json/g, '').replace(/```/g, '').trim();
       const parsed = JSON.parse(cleanJson) as DishAnalysisResult;
-      
+
       logger.log(`identifyDish completed for "${parsed.dishName}" in ${Date.now() - start}ms`);
       return parsed;
     } catch (error: any) {
@@ -125,7 +112,6 @@ class GeminiService {
       const raw = String(error?.message || error);
       const quotaDetected = /quota|exceeded|429/.test(raw.toLowerCase()) || error?.status === 429 || error?.statusCode === 429;
       if (quotaDetected) {
-        // Propagate quota errors so callers can handle retry/cooldown UI
         throw error;
       }
       return null;

@@ -108,7 +108,7 @@ class BlackForestLabsService {
       width: 512,
       height: 512,
       safety_tolerance: 5,
-      steps: 20,
+      steps: 10,
       guidance: 10.0
     };
     const response = await fetch('https://api.bfl.ai/v1/flux-2-pro', {
