@@ -13,7 +13,16 @@
       "bundleIdentifier": "com.nibblr.menupicai",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera to scan menus with OCR."
+        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera to capture menu photos and videos.",
+        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photo library to let you choose images for OCR and menu saving.",
+        "NSPhotoLibraryAddUsageDescription": "Allow $(PRODUCT_NAME) to save photos to your library.",
+        "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to access your location while the app is in use to provide location-based restaurant suggestions and improve menu detection for nearby venues.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to access your location to offer background location features and timely venue suggestions.",
+        "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to access your location at all times to improve location-based features.",
+        "NSLocalNetworkUsageDescription": "Allow $(PRODUCT_NAME) to discover and communicate with devices on your local network when required for certain features.",
+        "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID for authentication when you enable it.",
+        "NSLocalNetworkPrivacyPolicy": "This app may discover and communicate with devices on your local network for specific features.",
+        "NSAllowsArbitraryLoads": false
       }
     },
     "android": {
