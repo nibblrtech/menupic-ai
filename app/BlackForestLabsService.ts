@@ -15,45 +15,13 @@ const logger = {
 };
 
 class BlackForestLabsService {
-
-  private apiKey: string | null = null;
-
-  /**
-   * Initializes by fetching the key from our backend.
-   */
-  private async initialize() {
-    if (this.apiKey) return;
-    
-    try {
-      // Fetch key from our secure API route
-      const response = await fetch('/api/black-forest-labs-key');
-      
-      if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.key) {
-        this.apiKey = data.key;
-      } else {
-        logger.error("No API Key returned from server");
-      }
-    } catch (error) {
-      logger.error("Failed to fetch API key", error);
-    }
-  }
+  // Client no longer holds the API key. All work is proxied through our server.
 
   public async pollForImage(pollUrl: string): Promise<any | null> {
     logger.log(`pollForImage at (${pollUrl})`);
-    await this.initialize();
-    if (!this.apiKey) {
-      logger.error("API Key not initialized");
-      return null;
-    }
     try {
       if (!pollUrl) {
-        logger.error("pollUrl is required");
+        logger.error('pollUrl is required');
         return null;
       }
 
@@ -61,12 +29,13 @@ class BlackForestLabsService {
       const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout
       let response;
       try {
-        response = await fetch(pollUrl, {
-          method: 'GET',
+        response = await fetch('/api/black-forest-proxy', {
+          method: 'POST',
           headers: {
             'accept': 'application/json',
-            'x-key': this.apiKey
+            'Content-Type': 'application/json'
           },
+          body: JSON.stringify({ action: 'poll', pollUrl }),
           signal: controller.signal
         });
       } finally {
@@ -75,12 +44,12 @@ class BlackForestLabsService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error(`API error: ${response.status} - ${errorText}`);
-        return { error: `API returned ${response.status}`, details: errorText };
+        logger.error(`Proxy API error: ${response.status} - ${errorText}`);
+        return { error: `Proxy returned ${response.status}`, details: errorText };
       }
 
       const data = await response.json();
-      logger.log('Poll response: ' + JSON.stringify(data, null, 2));
+      logger.log('Poll response (proxied): ' + JSON.stringify(data, null, 2));
       return data;
     } catch (error: any) {
       logger.error('Error polling result:', error);
@@ -96,13 +65,9 @@ class BlackForestLabsService {
 
   public async generateDishImage(dishDescription: string): Promise<string> {
     logger.log(`generateDishImage for (${dishDescription})`);
-    await this.initialize();
-    if (!this.apiKey) {
-      logger.error("API Key not initialized");
-      throw new Error("API Key not initialized");
-    }
-    // Build the request body for the API (API expects 'prompt', not 'dishDescription')
+    // Build the request body for the proxy (API expects 'prompt')
     const requestBody = {
+      action: 'generate',
       prompt: dishDescription,
       seed: 42,
       width: 512,
@@ -111,25 +76,27 @@ class BlackForestLabsService {
       steps: 10,
       guidance: 10.0
     };
-    const response = await fetch('https://api.bfl.ai/v1/flux-2-pro', {
+
+    const response = await fetch('/api/black-forest-proxy', {
       method: 'POST',
       headers: {
         'accept': 'application/json',
-        'x-key': this.apiKey,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(requestBody)
     });
+
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      logger.error(`Proxy API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Proxy API request failed: ${response.status} ${response.statusText}`);
     }
+
     const data = await response.json();
-    logger.log('Generate response: ' + JSON.stringify(data, null, 2));
+    logger.log('Generate response (proxied): ' + JSON.stringify(data, null, 2));
     // Expecting polling_url in the response
     if (!data.polling_url) {
-      logger.error('No polling_url in response', data);
+      logger.error('No polling_url in proxied response', data);
       throw new Error('No polling_url in response');
     }
     return data.polling_url;
