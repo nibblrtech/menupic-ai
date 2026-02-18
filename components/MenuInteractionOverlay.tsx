@@ -31,6 +31,9 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
   const [result, setResult] = useState<DishAnalysisResult | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [viewLayout, setViewLayout] = useState({ width: 0, height: 0 });
+  // Contextual info for loading popups
+  const [tappedText, setTappedText] = useState<string>('');
+  const [identifiedDishName, setIdentifiedDishName] = useState<string>('');
   // Mounted ref to allow cancelling long-running polling when component unmounts
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -127,6 +130,21 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
 
     if (statusRef.current !== 'idle') return;
 
+    // Find the nearest text block to the tap point for contextual display
+    let nearestText = '';
+    let minDist = Infinity;
+    for (const block of textBlocks) {
+      const centerX = block.frame.x + block.frame.width / 2;
+      const centerY = block.frame.y + block.frame.height / 2;
+      const dist = Math.hypot(imgX - centerX, imgY - centerY);
+      if (dist < minDist) {
+        minDist = dist;
+        nearestText = block.text;
+      }
+    }
+    setTappedText(nearestText);
+    setIdentifiedDishName('');
+
     try {
       setStatus('identifying');
       // For debugging, also compute mapped image coords (if applicable)
@@ -163,6 +181,7 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
 
       let generatedImage: string | undefined = undefined;
       if (data.imagePrompt) {
+        setIdentifiedDishName(data.dishName || '');
         setStatus('generating-image');
         try {
           const pollUrl = await blackForestLabsService.generateDishImage(data.imagePrompt);
@@ -265,7 +284,15 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
         <View style={styles.modalOverlay}>
           <View style={styles.loadingBox}>
             <ActivityIndicator size="large" color="#FF6347" />
-            <Text style={styles.loadingText}>Identifying Dish...</Text>
+            <Text style={styles.loadingText}>Identifying Dish…</Text>
+            {tappedText ? (
+              <View style={styles.contextBadge}>
+                <Text style={styles.contextLabel}>🔍 Looking up</Text>
+                <Text style={styles.contextValue} numberOfLines={3}>
+                  "{tappedText}"
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -275,8 +302,17 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
         <View style={styles.modalOverlay}>
           <View style={styles.loadingBox}>
             <ActivityIndicator size="large" color="#4CAF50" />
-            <Text style={styles.loadingText}>Generating Dish Image...</Text>
-            <Text style={styles.subLoadingText}>Using AI Imagination</Text>
+            <Text style={styles.loadingText}>Generating Dish Image…</Text>
+            {identifiedDishName ? (
+              <View style={styles.contextBadge}>
+                <Text style={styles.contextLabel}>🎨 Creating a photo of</Text>
+                <Text style={styles.contextValue} numberOfLines={2}>
+                  "{identifiedDishName}"
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.subLoadingText}>Using AI Imagination</Text>
+            )}
           </View>
         </View>
       </Modal>
@@ -369,6 +405,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#888',
     textAlign: 'center'
+  },
+  contextBadge: {
+    marginTop: 16,
+    backgroundColor: '#F7F7FA',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    maxWidth: 260,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E8E8EE',
+  },
+  contextLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#888',
+    letterSpacing: 0.3,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  contextValue: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#333',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    lineHeight: 21,
   },
   resultCard: {
     width: '90%',
