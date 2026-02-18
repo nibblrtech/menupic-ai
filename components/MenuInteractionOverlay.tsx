@@ -5,6 +5,7 @@ import {
     Image,
     LayoutChangeEvent,
     Modal,
+    Pressable,
     ScrollView,
     StyleSheet,
     Text,
@@ -172,6 +173,14 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
         throw err;
       }
 
+      // If the user cancelled while we were waiting for identifyDish, bail out.
+      // NOTE: cast needed because TS narrowed the ref from the early `!== 'idle'` guard,
+      // but the ref can be mutated externally (e.g. by cancelCurrentOperation) between awaits.
+      if ((statusRef.current as string) !== 'identifying') {
+        console.log('[MenuInteractionOverlay] identifyDish returned but user cancelled – aborting.');
+        return;
+      }
+
       if (!data) {
         // No dish identified — inform user and reset
         alert('No dish identified');
@@ -275,6 +284,15 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
     setImageError(null);
   };
 
+  /** Cancel any in-flight identification or image-generation and return to idle. */
+  const cancelCurrentOperation = () => {
+    setStatus('idle');
+    setTappedText('');
+    setIdentifiedDishName('');
+    setResult(null);
+    setImageError(null);
+  };
+
   return (
     <View style={styles.container} onLayout={onLayout} pointerEvents={status === 'idle' ? 'box-none' : 'auto'}>
       {/* Touches are installed on individual bounding boxes in the parent view. */}
@@ -283,6 +301,15 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
       <Modal transparent visible={status === 'identifying'} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.loadingBox}>
+            <Pressable
+              style={styles.cancelButton}
+              onPress={cancelCurrentOperation}
+              hitSlop={10}
+              accessibilityLabel="Cancel identification"
+              accessibilityRole="button"
+            >
+              <Text style={styles.cancelButtonText}>✕</Text>
+            </Pressable>
             <ActivityIndicator size="large" color="#FF6347" />
             <Text style={styles.loadingText}>Identifying Dish…</Text>
             {tappedText ? (
@@ -301,6 +328,15 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
       <Modal transparent visible={status === 'generating-image'} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.loadingBox}>
+            <Pressable
+              style={styles.cancelButton}
+              onPress={cancelCurrentOperation}
+              hitSlop={10}
+              accessibilityLabel="Cancel image generation"
+              accessibilityRole="button"
+            >
+              <Text style={styles.cancelButtonText}>✕</Text>
+            </Pressable>
             <ActivityIndicator size="large" color="#4CAF50" />
             <Text style={styles.loadingText}>Generating Dish Image…</Text>
             {identifiedDishName ? (
@@ -393,6 +429,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     minWidth: 200,
+  },
+  cancelButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#888',
+    lineHeight: 16,
   },
   loadingText: {
     marginTop: 12,
