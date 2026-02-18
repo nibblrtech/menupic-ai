@@ -11,8 +11,8 @@ import {
     Text,
     View
 } from 'react-native';
-import { blackForestLabsService } from '../app/BlackForestLabsService';
-import { DishAnalysisResult, geminiService, TextBlock } from '../app/GeminiService';
+import { blackForestLabsService } from '../services/BlackForestLabsService';
+import { DishAnalysisResult, geminiService, TextBlock } from '../services/GeminiService';
 
 interface Props {
   textBlocks: TextBlock[];
