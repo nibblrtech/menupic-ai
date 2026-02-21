@@ -62,7 +62,8 @@ const CAROUSEL_DATA = [
 if (Platform.OS === "android") {
   GoogleSignin.configure({
     // TODO: Replace with your actual Google Cloud OAuth web client ID
-    webClientId: "YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com",
+    webClientId: "568081811104-4vr26mj5jmd3kg52kn68ksitpo0f8a9f.apps.googleusercontent.com",
+    //webClientId: "YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com",
     offlineAccess: true,
   });
 }
@@ -89,22 +90,22 @@ export default function HomeScreen() {
         ],
       });
 
-      // Extract email from the credential
-      // Note: Apple only provides the email on FIRST sign-in.
-      // On subsequent sign-ins, credential.email may be null.
-      const email = credential.email;
-      if (email) {
-        console.log("[Auth] Apple Sign-In email:", email);
-        signIn(email);
-        router.replace("/(tabs)/scan");
-      } else {
-        // On subsequent sign-ins, we can decode the identityToken JWT to get the email
-        // For now, use the user identifier as a fallback
-        const fallbackEmail = `${credential.user}@privaterelay.appleid.com`;
-        console.log("[Auth] Apple Sign-In fallback (no email returned):", fallbackEmail);
-        signIn(fallbackEmail);
-        router.replace("/(tabs)/scan");
-      }
+      // `credential.user` is Apple's stable opaque user ID — this is the `sub` claim.
+      // It is always present, regardless of whether the user shared their email.
+      // `credential.email` is only returned on the VERY FIRST sign-in; null on all subsequent ones.
+      const sub = credential.user;
+      const email = credential.email ?? null;
+
+      console.log("[Auth] Apple Sign-In claims discovered:", {
+        sub,
+        email,
+        fullName: credential.fullName,
+        realUserStatus: credential.realUserStatus,
+      });
+      console.log("[Auth] Using sub as userId:", sub);
+
+      signIn(sub, email);
+      router.replace("/(tabs)/scan");
     } catch (e: any) {
       if (e.code === "ERR_REQUEST_CANCELED") {
         console.log("[Auth] User canceled Apple Sign-In");
@@ -121,9 +122,20 @@ export default function HomeScreen() {
       const response = await GoogleSignin.signIn();
 
       if (response.type === "success" && response.data?.user?.email) {
-        const email = response.data.user.email;
-        console.log("[Auth] Google Sign-In email:", email);
-        signIn(email);
+        const { email, id: googleSub, name, photo } = response.data.user;
+
+        // Google Sign-In reliably returns email on every sign-in, making it
+        // a stable identifier for Android. `id` is the Google `sub` claim and
+        // is also available if you prefer a non-PII identifier in future.
+        console.log("[Auth] Google Sign-In claims discovered:", {
+          email,
+          googleSub,
+          name,
+          photo,
+        });
+        console.log("[Auth] Using email as userId:", email);
+
+        signIn(email, email);
         router.replace("/(tabs)/scan");
       } else {
         console.log("[Auth] Google Sign-In cancelled or no email");
@@ -136,8 +148,14 @@ export default function HomeScreen() {
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         Alert.alert("Error", "Google Play Services are not available on this device.");
       } else {
-        console.error("[Auth] Google Sign-In error:", error);
-        Alert.alert("Sign-In Error", "Failed to sign in with Google. Please try again.");
+        const errorCode = error.code ?? "no code";
+        const errorMessage = error.message ?? "no message";
+        const errorDetails = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+        console.error("[Auth] Google Sign-In error:", errorDetails);
+        Alert.alert(
+          "Sign-In Error",
+          `Code: ${errorCode}\nMessage: ${errorMessage}\n\nFull error:\n${errorDetails}`
+        );
       }
     }
   };

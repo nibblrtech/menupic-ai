@@ -5,7 +5,7 @@ import { useAuth } from "../../contexts/AuthContext";
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
-  const { email, signOut } = useAuth();
+  const { userId, email, signOut } = useAuth();
 
   return (
     <View style={styles.container}>
@@ -17,10 +17,16 @@ export default function AccountScreen() {
         <Text style={styles.placeholder}>🚧</Text>
         <Text style={styles.title}>Account Page</Text>
         <Text style={styles.subtitle}>TBD — Coming Soon</Text>
-        {email && (
+        {userId && (
           <View style={styles.emailContainer}>
             <Text style={styles.emailLabel}>Signed in as:</Text>
-            <Text style={styles.emailValue}>{email}</Text>
+            {email ? (
+              <Text style={styles.emailValue}>{email}</Text>
+            ) : (
+              <Text style={styles.emailValue} numberOfLines={1} ellipsizeMode="middle">
+                {userId}
+              </Text>
+            )}
           </View>
         )}
         <Text style={styles.signOutButton} onPress={signOut}>

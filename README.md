@@ -79,5 +79,22 @@ Once a production build has been uploaded via Transporter, test it on a physical
 - [ ] Record deduction transactions in `TokenTransactions` table with `transaction_type: 'deduct'`
 
 
-how to deploy android app to production:
+////////////////////////////////////////////
+// during setup of sign in with google, 
+// I created 2 OAuth 2.0 Client IDs
+// I needed to get the SHA1 for this project in dev mode in order to create the 
+// "android app" variant.  See this page: https://console.cloud.google.com/auth/clients?authuser=1&project=menupicai, for detailed on the two IDs.
 
+Now, note this for production builds:
+
+"Important notes:
+This is your debug SHA1 — it works for local development builds. When you create a production/release build (e.g., via EAS Build), you'll need the SHA1 from your release keystore as well. You can get that from EAS with:
+
+"eas credentials -p android"
+
+In Google Cloud Console, when creating the OAuth client ID:
+
+Choose Android as the application type
+Enter your package name (check your app.json for the android.package value)
+Paste the SHA1 above (e.g. 6B:0E:A1:FE:5A:F6:6B:C7:25:B2:2C:44:C9:A2:CB:07:EB:85:09:85)
+The original Gradle error was because you don't have the Android SDK installed locally (ANDROID_HOME not set). That's fine if you're building via EAS — you only need the keystore SHA1, which we got directly with keytool.
