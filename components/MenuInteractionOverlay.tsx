@@ -10,7 +10,7 @@ import {
     Text,
     View
 } from 'react-native';
-import { Colors, Fonts, FontSize, Spacing } from '../constants/DesignSystem';
+import { Button, Colors, Fonts, FontSize, Spacing } from '../constants/DesignSystem';
 import { blackForestLabsService } from '../services/BlackForestLabsService';
 import { DishAnalysisResult, geminiService, TextBlock } from '../services/GeminiService';
 
@@ -357,9 +357,6 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
       <Modal transparent visible={status === 'complete' && !!result} animationType="slide" onRequestClose={closeResult}>
         <View style={styles.modalOverlay}>
           <View style={styles.resultCard}>
-            <Pressable style={styles.resultCloseButton} onPress={closeResult} hitSlop={10} accessibilityLabel="Close result" accessibilityRole="button">
-              <Text style={styles.resultCloseButtonText}>✕</Text>
-            </Pressable>
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
               {result && (
                 <>
@@ -390,6 +387,9 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
                 </>
               )}
             </ScrollView>
+            <Pressable style={styles.doneButton} onPress={closeResult} accessibilityLabel="Done" accessibilityRole="button">
+              <Text style={styles.doneButtonText}>Done</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -506,31 +506,27 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light,
     borderRadius: Spacing.md,
     padding: Spacing.md,
-    paddingTop: Spacing.lg,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
   },
-  resultCloseButton: {
-    position: 'absolute',
-    top: Spacing.xs,
-    right: Spacing.xs,
-    width: 32,
-    height: 32,
+  scrollContent: {
+    paddingBottom: Spacing.sm,
+  },
+  doneButton: {
+    height: Button.height,
+    borderRadius: Button.borderRadius,
+    backgroundColor: Colors.dark,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
+    marginTop: Spacing.sm,
   },
-  resultCloseButtonText: {
+  doneButtonText: {
     fontSize: FontSize.normal,
     fontFamily: Fonts.bold,
-    color: Colors.textOnLight,
-    opacity: 0.5,
-  },
-  scrollContent: {
-    paddingBottom: Spacing.md,
+    color: Colors.textOnDark,
   },
   generatedDishImage: {
     width: '100%',

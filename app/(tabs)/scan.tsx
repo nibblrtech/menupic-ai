@@ -599,10 +599,10 @@ const styles = StyleSheet.create({
   },
   boundingBox: {
     position: 'absolute',
-    backgroundColor: 'rgba(255,246,238,0.12)',
+    backgroundColor: 'rgba(255,246,238,0.18)',
     borderRadius: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,246,238,0.3)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,246,238,0.85)',
   },
   processingIndicator: {
     position: 'absolute',
