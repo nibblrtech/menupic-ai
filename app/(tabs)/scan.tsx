@@ -5,7 +5,7 @@ import TextRecognition, {
 import { useIsFocused } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { AppState, Button, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
     Camera,
@@ -14,6 +14,7 @@ import {
     useCameraPermission,
 } from "react-native-vision-camera";
 import { MenuInteractionOverlay } from "../../components/MenuInteractionOverlay";
+import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../../constants/DesignSystem";
 
 interface BoundingBox {
   x: number;
@@ -417,15 +418,18 @@ export default function ScanScreen() {
   }
 
   if (!hasPermission) {
+    const _btn = buttonColors('dark');
     return (
       <View style={styles.container}>
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
         <View style={styles.permissionContainer}>
           <Text style={styles.permissionTitle}>Camera Access Required</Text>
           <Text style={styles.permissionMessage}>
             We need your permission to show the camera
           </Text>
-          <Button onPress={requestPermission} title="Grant Permission" />
+          <Pressable style={styles.permissionButton} onPress={requestPermission}>
+            <Text style={[styles.permissionButtonText, { color: _btn.text }]}>Grant Permission</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -522,49 +526,70 @@ export default function ScanScreen() {
   );
 }
 
+const _permBtn = buttonColors('dark');
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: Colors.dark,
   },
   permissionContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-    backgroundColor: "#fff",
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.md,
+    backgroundColor: Colors.dark,
   },
   permissionTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 10,
-    textAlign: "center",
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+    color: Colors.textOnDark,
+    marginBottom: Spacing.xs,
+    textAlign: 'center',
   },
   permissionMessage: {
-    fontSize: 16,
-    textAlign: "center",
-    marginBottom: 20,
-    color: "#666",
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.regular,
+    color: Colors.textOnDark,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+    opacity: 0.7,
+  },
+  permissionButton: {
+    height: Btn.height,
+    borderRadius: Btn.borderRadius,
+    backgroundColor: _permBtn.bg,
+    paddingHorizontal: Spacing.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  permissionButtonText: {
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
   },
   header: {
-    backgroundColor: "#1a1a1a",
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    alignItems: "center",
+    backgroundColor: Colors.dark,
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.xs,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dividerDark,
   },
   headerText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
   },
   headerSubtext: {
-    color: "#4CAF50",
-    fontSize: 12,
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
     marginTop: 4,
+    opacity: 0.5,
   },
   cameraContainer: {
     flex: 1,
-    position: "relative",
+    position: 'relative',
   },
   camera: {
     flex: 1,
@@ -573,20 +598,24 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   boundingBox: {
-    position: "absolute",
-    backgroundColor: "rgba(0, 0, 0, 0.25)",
+    position: 'absolute',
+    backgroundColor: 'rgba(255,246,238,0.12)',
     borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,246,238,0.3)',
   },
   processingIndicator: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    borderRadius: 12,
+    position: 'absolute',
+    top: Spacing.xs,
+    right: Spacing.xs,
+    backgroundColor: 'rgba(31,41,51,0.7)',
+    borderRadius: Spacing.xs,
     padding: 4,
   },
   processingText: {
-    color: "#FF5722",
-    fontSize: 16,
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    opacity: 0.7,
   },
 });

@@ -22,6 +22,7 @@ import Carousel, {
     Pagination,
 } from "react-native-reanimated-carousel";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../constants/DesignSystem";
 import { useAuth } from "../contexts/AuthContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -33,28 +34,24 @@ const CAROUSEL_DATA = [
     title: "Scan Any Menu",
     description: "Point your camera at any restaurant menu and instantly recognize text",
     emoji: "📸",
-    backgroundColor: "#1a472a",
   },
   {
     id: 2,
     title: "AI-Powered Identification",
     description: "Tap on any dish name to get AI-generated descriptions and images",
     emoji: "🤖",
-    backgroundColor: "#2d1b4e",
   },
   {
     id: 3,
     title: "See Your Food",
     description: "Get beautiful AI-generated images of dishes before you order",
     emoji: "🍽️",
-    backgroundColor: "#4a1a1a",
   },
   {
     id: 4,
     title: "Works Everywhere",
     description: "Supports menus in multiple languages with real-time OCR",
     emoji: "🌍",
-    backgroundColor: "#1a3a4a",
   },
 ];
 
@@ -168,7 +165,7 @@ export default function HomeScreen() {
   };
 
   const renderCarouselItem = ({ item }: { item: (typeof CAROUSEL_DATA)[number] }) => (
-    <View style={[styles.carouselItem, { backgroundColor: item.backgroundColor }]}>
+    <View style={styles.carouselItem}>
       <Text style={styles.carouselEmoji}>{item.emoji}</Text>
       <Text style={styles.carouselTitle}>{item.title}</Text>
       <Text style={styles.carouselDescription}>{item.description}</Text>
@@ -222,7 +219,7 @@ export default function HomeScreen() {
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
               buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-              cornerRadius={16}
+              cornerRadius={Btn.borderRadius}
               style={styles.appleButton}
               onPress={handleAppleSignIn}
             />
@@ -241,114 +238,125 @@ export default function HomeScreen() {
   );
 }
 
+const _btn = buttonColors('dark');
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: Colors.dark,
   },
   content: {
     flex: 1,
-    alignItems: "center",
+    alignItems: 'center',
   },
   logoContainer: {
-    alignItems: "center",
-    marginBottom: 24,
+    alignItems: 'center',
+    marginBottom: Spacing.md,
   },
   logo: {
     width: 80,
     height: 80,
-    borderRadius: 20,
-    marginBottom: 12,
+    borderRadius: Spacing.xs,
+    marginBottom: Spacing.xs,
   },
   appName: {
-    color: "#fff",
-    fontSize: 32,
-    fontWeight: "bold",
+    color: Colors.textOnDark,
+    fontSize: FontSize.title,
+    fontFamily: Fonts.bold,
     letterSpacing: 1,
   },
   tagline: {
-    color: "#888",
-    fontSize: 16,
-    marginTop: 6,
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    opacity: 0.6,
+    marginTop: Spacing.xs / 2,
   },
   carouselContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   carousel: {
-    alignSelf: "center",
+    alignSelf: 'center',
   },
   carouselItem: {
     flex: 1,
-    borderRadius: 20,
-    padding: 30,
-    justifyContent: "center",
-    alignItems: "center",
-    marginHorizontal: 4,
+    borderRadius: Spacing.md,
+    padding: Spacing.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: Spacing.xs / 2,
+    backgroundColor: 'rgba(255,246,238,0.06)',
+    borderWidth: 1,
+    borderColor: Colors.dividerDark,
   },
   carouselEmoji: {
-    fontSize: 56,
-    marginBottom: 16,
+    fontSize: 48,
+    marginBottom: Spacing.sm,
   },
   carouselTitle: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 8,
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
   },
   carouselDescription: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 15,
-    textAlign: "center",
-    lineHeight: 22,
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    textAlign: 'center',
+    lineHeight: 20,
+    opacity: 0.7,
   },
   paginationDot: {
-    width: 8,
-    height: 8,
+    width: Spacing.xs,
+    height: Spacing.xs,
     borderRadius: 4,
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: Colors.dividerDark,
   },
   paginationActiveDot: {
-    width: 8,
-    height: 8,
+    width: Spacing.xs,
+    height: Spacing.xs,
     borderRadius: 4,
-    backgroundColor: "#4CAF50",
-    overflow: "hidden",
+    backgroundColor: Colors.light,
+    overflow: 'hidden',
   },
   paginationContainer: {
     gap: 6,
-    marginTop: 16,
+    marginTop: Spacing.sm,
   },
   bottomSection: {
-    width: "100%",
-    paddingHorizontal: 20,
-    alignItems: "center",
+    width: '100%',
+    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
   },
   appleButton: {
-    width: "100%",
-    height: 52,
-    marginBottom: 12,
+    width: '100%',
+    height: Btn.height,
+    marginBottom: Spacing.xs,
   },
   googleButton: {
-    width: "100%",
-    height: 52,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
+    width: '100%',
+    height: Btn.height,
+    backgroundColor: _btn.bg,
+    borderRadius: Btn.borderRadius,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
   },
   googleButtonText: {
-    color: "#000",
-    fontSize: 17,
-    fontWeight: "600",
+    color: _btn.text,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
   },
   termsText: {
-    color: "#555",
-    fontSize: 12,
-    textAlign: "center",
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    textAlign: 'center',
     lineHeight: 18,
+    opacity: 0.5,
   },
 });

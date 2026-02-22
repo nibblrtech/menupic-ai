@@ -98,3 +98,8 @@ Choose Android as the application type
 Enter your package name (check your app.json for the android.package value)
 Paste the SHA1 above (e.g. 6B:0E:A1:FE:5A:F6:6B:C7:25:B2:2C:44:C9:A2:CB:07:EB:85:09:85)
 The original Gradle error was because you don't have the Android SDK installed locally (ANDROID_HOME not set). That's fine if you're building via EAS — you only need the keystore SHA1, which we got directly with keytool.
+
+
+
+Supabase: see `SECRETS.local.md` (not committed to git)
+

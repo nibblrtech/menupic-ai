@@ -1,7 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Button,
     Image,
     LayoutChangeEvent,
     Modal,
@@ -11,6 +10,7 @@ import {
     Text,
     View
 } from 'react-native';
+import { Colors, Fonts, FontSize, Spacing } from '../constants/DesignSystem';
 import { blackForestLabsService } from '../services/BlackForestLabsService';
 import { DishAnalysisResult, geminiService, TextBlock } from '../services/GeminiService';
 
@@ -310,11 +310,11 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
             >
               <Text style={styles.cancelButtonText}>✕</Text>
             </Pressable>
-            <ActivityIndicator size="large" color="#FF6347" />
+            <ActivityIndicator size="large" color={Colors.dark} />
             <Text style={styles.loadingText}>Identifying Dish…</Text>
             {tappedText ? (
               <View style={styles.contextBadge}>
-                <Text style={styles.contextLabel}>🔍 Looking up</Text>
+                <Text style={styles.contextLabel}>Looking up</Text>
                 <Text style={styles.contextValue} numberOfLines={3}>
                   "{tappedText}"
                 </Text>
@@ -337,11 +337,11 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
             >
               <Text style={styles.cancelButtonText}>✕</Text>
             </Pressable>
-            <ActivityIndicator size="large" color="#4CAF50" />
+            <ActivityIndicator size="large" color={Colors.dark} />
             <Text style={styles.loadingText}>Generating Dish Image…</Text>
             {identifiedDishName ? (
               <View style={styles.contextBadge}>
-                <Text style={styles.contextLabel}>🎨 Creating a photo of</Text>
+                <Text style={styles.contextLabel}>Creating a photo of</Text>
                 <Text style={styles.contextValue} numberOfLines={2}>
                   "{identifiedDishName}"
                 </Text>
@@ -357,7 +357,10 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
       <Modal transparent visible={status === 'complete' && !!result} animationType="slide" onRequestClose={closeResult}>
         <View style={styles.modalOverlay}>
           <View style={styles.resultCard}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <Pressable style={styles.resultCloseButton} onPress={closeResult} hitSlop={10} accessibilityLabel="Close result" accessibilityRole="button">
+              <Text style={styles.resultCloseButtonText}>✕</Text>
+            </Pressable>
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
               {result && (
                 <>
                   {/* Generated Image at the top */}
@@ -369,7 +372,7 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
                       />
                    ) : (
                       <View style={styles.imagePlaceholder}>
-                        <Text style={styles.placeholderText}>[No AI Image Generated]</Text>
+                        <Text style={styles.placeholderText}>No AI Image Generated</Text>
                       </View>
                    )}
 
@@ -387,7 +390,6 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
                 </>
               )}
             </ScrollView>
-            <Button title="Close" onPress={closeResult} />
           </View>
         </View>
       </Modal>
@@ -396,9 +398,11 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
       <Modal transparent visible={status === 'image-error'} animationType="fade" onRequestClose={closeResult}>
         <View style={styles.modalOverlay}>
           <View style={styles.loadingBox}>
+            <Pressable style={styles.cancelButton} onPress={closeResult} hitSlop={10} accessibilityLabel="Close error" accessibilityRole="button">
+              <Text style={styles.cancelButtonText}>✕</Text>
+            </Pressable>
             <Text style={styles.loadingText}>Image Generation Failed</Text>
             <Text style={styles.subLoadingText}>{imageError || 'An error occurred while generating the image.'}</Text>
-            <Button title="Close" onPress={closeResult} />
           </View>
         </View>
       </Modal>
@@ -410,163 +414,186 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject, // Covers the parent view
+    ...StyleSheet.absoluteFillObject,
     zIndex: 10,
   },
   touchArea: {
     flex: 1,
     backgroundColor: 'transparent',
   },
+  // ─── Shared modal infrastructure ───────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: Spacing.sm,
   },
+  // ─── Loading popup (identifying / generating) ──────────────────────────────
   loadingBox: {
-    backgroundColor: 'white',
-    padding: 24,
-    borderRadius: 12,
+    backgroundColor: Colors.light,
+    padding: Spacing.md,
+    borderRadius: Spacing.md,
     alignItems: 'center',
-    minWidth: 200,
+    minWidth: 240,
+    maxWidth: 320,
+    width: '100%',
   },
+  // Cancel "X" — no background, icon only
   cancelButton: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    top: Spacing.xs,
+    right: Spacing.xs,
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
   },
   cancelButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#888',
-    lineHeight: 16,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+    color: Colors.textOnLight,
+    opacity: 0.5,
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center'
+    marginTop: Spacing.xs,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+    color: Colors.textOnLight,
+    textAlign: 'center',
   },
   subLoadingText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#888',
-    textAlign: 'center'
+    marginTop: Spacing.xs / 2,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    color: Colors.textOnLight,
+    opacity: 0.55,
+    textAlign: 'center',
   },
   contextBadge: {
-    marginTop: 16,
-    backgroundColor: '#F7F7FA',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    maxWidth: 260,
+    marginTop: Spacing.sm,
+    backgroundColor: 'rgba(31,41,51,0.06)',
+    borderRadius: Spacing.xs,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    maxWidth: 280,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E8E8EE',
+    borderColor: Colors.dividerLight,
   },
   contextLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#888',
-    letterSpacing: 0.3,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.bold,
+    color: Colors.textOnLight,
+    opacity: 0.55,
+    letterSpacing: 0.5,
     marginBottom: 4,
     textTransform: 'uppercase',
   },
   contextValue: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#333',
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.regular,
+    color: Colors.textOnLight,
     textAlign: 'center',
     fontStyle: 'italic',
-    lineHeight: 21,
+    lineHeight: 22,
   },
+  // ─── Result card ───────────────────────────────────────────────────────────
   resultCard: {
-    width: '90%',
-    maxHeight: '85%',
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    width: '100%',
+    maxHeight: '88%',
+    backgroundColor: Colors.light,
+    borderRadius: Spacing.md,
+    padding: Spacing.md,
+    paddingTop: Spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  resultCloseButton: {
+    position: 'absolute',
+    top: Spacing.xs,
+    right: Spacing.xs,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  resultCloseButtonText: {
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+    color: Colors.textOnLight,
+    opacity: 0.5,
   },
   scrollContent: {
-    paddingBottom: 20,
+    paddingBottom: Spacing.md,
   },
   generatedDishImage: {
     width: '100%',
-    height: 250,
-    borderRadius: 12,
-    marginBottom: 15,
-    backgroundColor: '#eee',
+    height: 240,
+    borderRadius: Spacing.xs,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.dividerLight,
   },
   dishTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 5,
-    color: '#333',
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+    marginBottom: Spacing.xs / 2,
+    color: Colors.textOnLight,
   },
   divider: {
     height: 1,
-    backgroundColor: '#eee',
-    marginVertical: 10,
+    backgroundColor: Colors.dividerLight,
+    marginVertical: Spacing.xs,
   },
   sectionHeader: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#888',
-    marginTop: 15,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.bold,
+    color: Colors.textOnLight,
+    opacity: 0.5,
+    marginTop: Spacing.sm,
     marginBottom: 4,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   bodyText: {
-    fontSize: 16,
-    lineHeight: 22,
-    color: '#444',
-  },
-  priceText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2e7d32',
-  },
-  infoText: {
-    fontSize: 15,
-    color: '#555',
-    fontStyle: 'italic',
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.regular,
+    lineHeight: 24,
+    color: Colors.textOnLight,
   },
   imagePlaceholder: {
-    height: 150,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 12,
+    height: 144,
+    backgroundColor: Colors.dividerLight,
+    borderRadius: Spacing.xs,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: Spacing.sm,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderStyle: 'dashed'
+    borderColor: Colors.dividerLight,
+    borderStyle: 'dashed',
   },
   placeholderText: {
-    color: '#999',
-    fontWeight: 'bold'
+    color: Colors.textOnLight,
+    fontFamily: Fonts.regular,
+    fontSize: FontSize.small,
+    opacity: 0.4,
   },
   debugSection: {
-    marginTop: 20, 
-    borderTopWidth: 1, 
-    borderTopColor: '#eee', 
-    paddingTop: 10
+    marginTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.dividerLight,
+    paddingTop: Spacing.xs,
   },
   promptDebug: {
     fontSize: 10,
-    color: '#aaa',
-    textAlign: 'center'
-  }
+    fontFamily: Fonts.regular,
+    color: Colors.textOnLight,
+    opacity: 0.3,
+    textAlign: 'center',
+  },
 });

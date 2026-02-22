@@ -1,11 +1,13 @@
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../../constants/DesignSystem";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const { userId, email, signOut } = useAuth();
+  const _btn = buttonColors('light');
 
   return (
     <View style={styles.container}>
@@ -19,7 +21,7 @@ export default function AccountScreen() {
         <Text style={styles.subtitle}>TBD — Coming Soon</Text>
         {userId && (
           <View style={styles.emailContainer}>
-            <Text style={styles.emailLabel}>Signed in as:</Text>
+            <Text style={styles.emailLabel}>Signed in as</Text>
             {email ? (
               <Text style={styles.emailValue}>{email}</Text>
             ) : (
@@ -29,9 +31,9 @@ export default function AccountScreen() {
             )}
           </View>
         )}
-        <Text style={styles.signOutButton} onPress={signOut}>
-          Sign Out
-        </Text>
+        <Pressable style={[styles.signOutButton, { backgroundColor: _btn.bg }]} onPress={signOut}>
+          <Text style={[styles.signOutText, { color: _btn.text }]}>Sign Out</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -40,61 +42,76 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: Colors.dark,
   },
   header: {
-    backgroundColor: "#1a1a1a",
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    alignItems: "center",
+    backgroundColor: Colors.dark,
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.xs,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dividerDark,
   },
   headerText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
   },
   content: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.md,
   },
   placeholder: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: 56,
+    marginBottom: Spacing.sm,
   },
   title: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 8,
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+    marginBottom: Spacing.xs,
   },
   subtitle: {
-    color: "#888",
-    fontSize: 16,
-    marginBottom: 24,
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.regular,
+    opacity: 0.5,
+    marginBottom: Spacing.md,
   },
   emailContainer: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    alignItems: "center",
+    backgroundColor: 'rgba(255,246,238,0.07)',
+    borderRadius: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.dividerDark,
+    width: '100%',
   },
   emailLabel: {
-    color: "#888",
-    fontSize: 14,
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    opacity: 0.5,
     marginBottom: 4,
   },
   emailValue: {
-    color: "#4CAF50",
-    fontSize: 16,
-    fontWeight: "600",
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
   },
   signOutButton: {
-    color: "#FF5722",
-    fontSize: 16,
-    fontWeight: "600",
-    padding: 12,
+    height: Btn.height,
+    borderRadius: Btn.borderRadius,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  signOutText: {
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
   },
 });
