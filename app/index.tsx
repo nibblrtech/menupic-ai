@@ -6,7 +6,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import {
     Alert,
     Dimensions,
@@ -22,38 +22,17 @@ import Carousel, {
     Pagination,
 } from "react-native-reanimated-carousel";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MenuPageSlide, ResultPageSlide, ScanPageSlide } from "../components/CarouselSlides";
 import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../constants/DesignSystem";
 import { useAuth } from "../contexts/AuthContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// Carousel slides showcasing app features
-const CAROUSEL_DATA = [
-  {
-    id: 1,
-    title: "Scan Any Menu",
-    description: "Point your camera at any restaurant menu and instantly recognize text",
-    emoji: "📸",
-  },
-  {
-    id: 2,
-    title: "AI-Powered Identification",
-    description: "Tap on any dish name to get AI-generated descriptions and images",
-    emoji: "🤖",
-  },
-  {
-    id: 3,
-    title: "See Your Food",
-    description: "Get beautiful AI-generated images of dishes before you order",
-    emoji: "🍽️",
-  },
-  {
-    id: 4,
-    title: "Works Everywhere",
-    description: "Supports menus in multiple languages with real-time OCR",
-    emoji: "🌍",
-  },
-];
+/**
+ * Three slide indices — each maps to a live-rendered "screenshot" component.
+ * Adding a slide is as simple as adding an index and a case in renderCarouselItem.
+ */
+const SLIDES: number[] = [0, 1, 2];
 
 // Configure Google Sign-In only on Android (iOS uses Apple Sign-In)
 if (Platform.OS === "android") {
@@ -70,6 +49,7 @@ export default function HomeScreen() {
   const { signIn, isSignedIn } = useAuth();
   const carouselRef = useRef<ICarouselInstance>(null);
   const progress = useSharedValue<number>(0);
+  const [carouselContainerHeight, setCarouselContainerHeight] = useState(0);
 
   // If already signed in, redirect to tabs
   React.useEffect(() => {
@@ -164,11 +144,11 @@ export default function HomeScreen() {
     });
   };
 
-  const renderCarouselItem = ({ item }: { item: (typeof CAROUSEL_DATA)[number] }) => (
+  const renderCarouselItem = ({ item: slideIndex }: { item: number }) => (
     <View style={styles.carouselItem}>
-      <Text style={styles.carouselEmoji}>{item.emoji}</Text>
-      <Text style={styles.carouselTitle}>{item.title}</Text>
-      <Text style={styles.carouselDescription}>{item.description}</Text>
+      {slideIndex === 0 && <MenuPageSlide />}
+      {slideIndex === 1 && <ScanPageSlide />}
+      {slideIndex === 2 && <ResultPageSlide />}
     </View>
   );
 
@@ -176,7 +156,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      <View style={[styles.content, { paddingTop: insets.top + 40 }]}>
+      <View style={[styles.content, { paddingTop: insets.top + Spacing.sm }]}>
         {/* App Logo & Name */}
         <View style={styles.logoContainer}>
           <Image
@@ -189,23 +169,28 @@ export default function HomeScreen() {
         </View>
 
         {/* Carousel */}
-        <View style={styles.carouselContainer}>
-          <Carousel
-            ref={carouselRef}
-            width={SCREEN_WIDTH - 40}
-            height={240}
-            data={CAROUSEL_DATA}
-            loop
-            autoPlay
-            autoPlayInterval={3000}
-            onProgressChange={progress}
-            renderItem={renderCarouselItem}
-            style={styles.carousel}
-          />
+        <View
+          style={styles.carouselContainer}
+          onLayout={(e) => setCarouselContainerHeight(e.nativeEvent.layout.height)}
+        >
+          {carouselContainerHeight > 0 && (
+            <Carousel
+              ref={carouselRef}
+              width={SCREEN_WIDTH - 40}
+              height={carouselContainerHeight - 38}
+              data={SLIDES}
+              loop
+              autoPlay
+              autoPlayInterval={3500}
+              onProgressChange={progress}
+              renderItem={renderCarouselItem}
+              style={styles.carousel}
+            />
+          )}
 
           <Pagination.Basic
             progress={progress}
-            data={CAROUSEL_DATA}
+            data={SLIDES}
             dotStyle={styles.paginationDot}
             activeDotStyle={styles.paginationActiveDot}
             containerStyle={styles.paginationContainer}
@@ -251,13 +236,13 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   logo: {
-    width: 80,
-    height: 80,
+    width: 56,
+    height: 56,
     borderRadius: Spacing.xs,
-    marginBottom: Spacing.xs,
+    marginBottom: 4,
   },
   appName: {
     color: Colors.textOnDark,
@@ -283,32 +268,10 @@ const styles = StyleSheet.create({
   carouselItem: {
     flex: 1,
     borderRadius: Spacing.md,
-    padding: Spacing.md,
-    justifyContent: 'center',
-    alignItems: 'center',
     marginHorizontal: Spacing.xs / 2,
-    backgroundColor: 'rgba(255,246,238,0.06)',
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.dividerDark,
-  },
-  carouselEmoji: {
-    fontSize: 48,
-    marginBottom: Spacing.sm,
-  },
-  carouselTitle: {
-    color: Colors.textOnDark,
-    fontSize: FontSize.normal,
-    fontFamily: Fonts.bold,
-    textAlign: 'center',
-    marginBottom: Spacing.xs,
-  },
-  carouselDescription: {
-    color: Colors.textOnDark,
-    fontSize: FontSize.small,
-    fontFamily: Fonts.regular,
-    textAlign: 'center',
-    lineHeight: 20,
-    opacity: 0.7,
   },
   paginationDot: {
     width: Spacing.xs,
