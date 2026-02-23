@@ -270,8 +270,6 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.md,
     marginHorizontal: Spacing.xs / 2,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.dividerDark,
   },
   paginationDot: {
     width: Spacing.xs,

@@ -10,7 +10,7 @@
  *   1 · ScanPageSlide   — the scan screen with OCR bounding-box overlays
  *   2 · ResultPageSlide — the result card with simulated AI dish image & details
  */
-import React from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Colors, Fonts, Spacing } from '../constants/DesignSystem';
 
@@ -20,313 +20,722 @@ const RADIUS = Spacing.md; // 24 — matches carousel item border-radius
 // Slide 0 · Foreign Menu
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MENU_BG  = '#F5E8C8';
-const MENU_INK = '#2C1A0E';
+const MENU_BG     = '#F5E8C8';
+const MENU_INK    = '#2C1A0E';
+const MENU_ACCENT = '#7A5C28'; // warm gold — dividers & accents
+const MENU_WINE   = '#5C4020'; // muted brown — wine pairing lines
 
-function MenuSection({
-  title,
-  items,
+/**
+ * Reference design dimensions. MenuCardContent is always laid out at exactly
+ * REF_W × REF_H, then MenuPageSlide transform-scales that inner view to fill
+ * whatever space the carousel card provides — so all proportions are preserved.
+ */
+const REF_W = 300;
+const REF_H = 400;
+
+/** A bounding box in the REF_W × REF_H pixel coordinate space. */
+type OcrBox = { x: number; y: number; w: number; h: number };
+
+/** Optional refs passed into MenuCourse so MenuCardContent can measure each text. */
+type CourseRefs = {
+  name?: React.RefObject<Text | null>;
+  desc?: React.RefObject<Text | null>;
+  wine?: React.RefObject<Text | null>;
+  /** Receives the max rendered line width of the desc text via onTextLayout. */
+  descWidthRef?: React.MutableRefObject<number>;
+};
+
+function MenuCourse({
+  name,
+  description,
+  wine,
+  textRefs,
 }: {
-  title: string;
-  items: Array<{ name: string; price: string }>;
+  name: string;
+  description: string;
+  wine: string;
+  textRefs?: CourseRefs;
 }) {
   return (
-    <View style={menuSt.section}>
-      <View style={menuSt.sectionHeaderRow}>
-        <View style={menuSt.sectionLine} />
-        <Text style={menuSt.sectionTitle}>{title}</Text>
-        <View style={menuSt.sectionLine} />
-      </View>
-      {items.map((item, i) => (
-        <View key={i} style={menuSt.row}>
-          <Text style={menuSt.itemName}>{item.name}</Text>
-          <Text style={menuSt.dots} numberOfLines={1}>{'·  ·  ·  ·  ·'}</Text>
-          <Text style={menuSt.price}>{item.price}</Text>
-        </View>
-      ))}
+    <View style={menuSt.course}>
+      <Text ref={textRefs?.name} style={menuSt.courseName}>{name}</Text>
+      <Text
+        ref={textRefs?.desc}
+        style={menuSt.courseDesc}
+        numberOfLines={2}
+        onTextLayout={textRefs?.descWidthRef ? (e) => {
+          const maxW = Math.max(0, ...e.nativeEvent.lines.map((l) => l.width));
+          textRefs.descWidthRef!.current = maxW;
+        } : undefined}
+      >{description}</Text>
+      <Text ref={textRefs?.wine} style={menuSt.courseWine} numberOfLines={1}>◆  {wine}</Text>
     </View>
   );
 }
 
-/** Inner menu markup — shared by MenuPageSlide and the ScanPageSlide background. */
-function MenuCardContent() {
+/**
+ * Inner menu markup — shared by MenuPageSlide and the ScanPageSlide background.
+ *
+ * When `onOcrBoxes` is provided (scan slide only), every text element is
+ * measured relative to the `content` root via measureLayout after layout
+ * completes.  The returned boxes are in the REF_W × REF_H pixel space, so
+ * the caller can scale them exactly like the menu itself.
+ *
+ * Header texts (centered) additionally use onTextLayout to get the actual
+ * rendered text width so the box is tight around the glyphs, not full-width.
+ */
+function MenuCardContent({
+  onOcrBoxes,
+}: {
+  onOcrBoxes?: (boxes: OcrBox[]) => void;
+} = {}) {
+  const rootRef   = useRef<View>(null);
+
+  // ── Text refs (12 total) ────────────────────────────────────────────
+  const rNameRef  = useRef<Text>(null);
+  const rSubRef   = useRef<Text>(null);
+  const c1NameRef = useRef<Text>(null);
+  const c1DescRef = useRef<Text>(null);
+  const c1WineRef = useRef<Text>(null);
+  const c2NameRef = useRef<Text>(null);
+  const c2DescRef = useRef<Text>(null);
+  const c2WineRef = useRef<Text>(null);
+  const c3NameRef = useRef<Text>(null);
+  const c3DescRef = useRef<Text>(null);
+  const c3WineRef = useRef<Text>(null);
+  const c4NameRef = useRef<Text>(null);
+  const c4DescRef = useRef<Text>(null);
+  const c4WineRef = useRef<Text>(null);
+  const c5NameRef = useRef<Text>(null);
+  const c5DescRef = useRef<Text>(null);
+  const c5WineRef = useRef<Text>(null);
+
+  // Actual rendered widths for header texts (set by onTextLayout before measureAll runs)
+  const rNameTextW = useRef(0);
+  const rSubTextW  = useRef(0);
+  // Actual rendered max-line widths for desc texts (wrapping text fills container width
+  // on measureLayout, so we must capture the real rendered width via onTextLayout)
+  const c1DescW = useRef(0);
+  const c2DescW = useRef(0);
+  const c3DescW = useRef(0);
+  const c4DescW = useRef(0);
+  const c5DescW = useRef(0);
+
+  /**
+   * After the root view lays out, measure every text element relative to
+   * the root.  Header refs get their x re-centered using the real text width
+   * captured by onTextLayout; course name / wine refs already have
+   * alignSelf:'flex-start' so measureLayout returns the true content width.
+   */
+  const measureAll = useCallback(() => {
+    if (!onOcrBoxes || !rootRef.current) return;
+    const root = rootRef.current;
+
+    // Course text refs in box order (header handled separately below)
+    const courseRefs = [
+      c1NameRef, c1DescRef, c1WineRef,
+      c2NameRef, c2DescRef, c2WineRef,
+      c3NameRef, c3DescRef, c3WineRef,
+      c4NameRef, c4DescRef, c4WineRef,
+      c5NameRef, c5DescRef, c5WineRef,
+    ];
+
+    const boxes: OcrBox[] = Array(17).fill({ x: 0, y: 0, w: 0, h: 0 });
+    let remaining = 17;
+
+    const done = (i: number, box: OcrBox) => {
+      boxes[i] = box;
+      if (--remaining === 0) onOcrBoxes([...boxes]);
+    };
+
+    // Header: measureLayout gives position; width comes from onTextLayout
+    const measureHeader = (ref: React.RefObject<Text | null>, widthRef: React.MutableRefObject<number>, idx: number) => {
+      if (!ref.current) { done(idx, { x: 0, y: 0, w: 0, h: 0 }); return; }
+      (ref.current as any).measureLayout(
+        root,
+        (_x: number, y: number, fullW: number, h: number) => {
+          const tw = widthRef.current || fullW;
+          done(idx, { x: (REF_W - tw) / 2, y, w: tw, h });
+        },
+        () => done(idx, { x: 0, y: 0, w: 0, h: 0 }),
+      );
+    };
+    measureHeader(rNameRef, rNameTextW, 0);
+    measureHeader(rSubRef,  rSubTextW,  1);
+
+    // Course texts: measureLayout gives exact position + content width.
+    // For desc elements (every 3rd starting at index 1), measureLayout returns
+    // the full container width because wrapping text fills its parent even with
+    // alignSelf:'flex-start'.  Use the real max line width from onTextLayout instead.
+    const descWidthRefs = [c1DescW, c2DescW, c3DescW, c4DescW, c5DescW];
+    courseRefs.forEach((ref, i) => {
+      if (!ref.current) { done(i + 2, { x: 0, y: 0, w: 0, h: 0 }); return; }
+      const isDesc = i % 3 === 1;
+      const capturedDescW = isDesc ? descWidthRefs[Math.floor(i / 3)].current : 0;
+      (ref.current as any).measureLayout(
+        root,
+        (x: number, y: number, w: number, h: number) => {
+          const finalW = isDesc ? (capturedDescW || w) : w;
+          done(i + 2, { x, y, w: finalW, h });
+        },
+        () => done(i + 2, { x: 0, y: 0, w: 0, h: 0 }),
+      );
+    });
+  }, [onOcrBoxes]);
+
   return (
-    <>
+    <View ref={rootRef} style={menuSt.content} onLayout={measureAll}>
       <View style={menuSt.header}>
-        <Text style={menuSt.restaurantName}>麺と炭火　夕暮れ</Text>
-        <Text style={menuSt.restaurantSub}>NOODLES · CHARCOAL GRILL · IZAKAYA</Text>
+        <Text
+          ref={rNameRef}
+          style={menuSt.restaurantName}
+          onTextLayout={(e) => { rNameTextW.current = e.nativeEvent.lines[0]?.width ?? 0; }}
+        >
+          མཚོ་ཆེན་དཀར་པོ།
+        </Text>
+        <Text
+          ref={rSubRef}
+          style={menuSt.restaurantSub}
+          onTextLayout={(e) => { rSubTextW.current = e.nativeEvent.lines[0]?.width ?? 0; }}
+        >
+          རྒྱ་མཚོའི་ཟས་རིགས།  ·  ལྷ་ས།
+        </Text>
       </View>
 
       <View style={menuSt.divider} />
 
       <View style={menuSt.body}>
-        <MenuSection
-          title="前菜"
-          items={[
-            { name: '枝豆', price: '¥380' },
-            { name: '揚げ出し豆腐', price: '¥520' },
-          ]}
+        <MenuCourse
+          name="ཉ་ཆེན།"
+          description="ཉ་ཆེན་གི་ཤ་ཞིབ་མ། མཆིན་པ་སྨན། གསེར་གྱི་བག་ལེབ། སྤང་རྩི།"
+          wine="གྲུ་བཞི་འབྲུམ་ཆང་། ཝ་ཁའོ། ༢༠༢༣"
+          textRefs={{ name: c1NameRef, desc: c1DescRef, wine: c1WineRef, descWidthRef: c1DescW }}
         />
-        <MenuSection
-          title="麺類"
-          items={[
-            { name: '醤油ラーメン', price: '¥890' },
-            { name: 'つけ麺', price: '¥950' },
-          ]}
+        <View style={menuSt.courseSep} />
+        <MenuCourse
+          name="ཤ་ལྷ།"
+          description="ཤ་ལྷ་རླངས་བཙལ། སྐྱུར་ཤིང་། རྒྱ་མཚོའི་ཆུ་རོལ།"
+          wine="དཀར་ཆང་། ལྭར། ༢༠༢༢"
+          textRefs={{ name: c2NameRef, desc: c2DescRef, wine: c2WineRef, descWidthRef: c2DescW }}
         />
-        <MenuSection
-          title="焼き物"
-          items={[
-            { name: '焼き鳥盛り合わせ', price: '¥1,200' },
-            { name: '炙りチャーシュー', price: '¥780' },
-          ]}
+        <View style={menuSt.courseSep} />
+        <MenuCourse
+          name="དམར་ཉ། · ཉ་སྒོང་།"
+          description="དམར་ཉ་དལ་བཙོས། རྒྱལ་གྱི་ཉ་སྒོང་། རྩི་དྲུལ་རྩི།"
+          wine="གསེར་ཆང་། ཤམ་པཉི། ༢༠༡༥"
+          textRefs={{ name: c3NameRef, desc: c3DescRef, wine: c3WineRef, descWidthRef: c3DescW }}
+        />
+        <View style={menuSt.courseSep} />
+        <MenuCourse
+          name="གཞུང་ཉ།"
+          description="གཞུང་ཉ་རྫས་སྦྱོར། རྒྱུན་ཤིང་། ཐིག་སྣུམ་རྩི།"
+          wine="དཀར་ཆང་། ཨི་བི་རི་ཡ། ༢༠༢༣"
+          textRefs={{ name: c4NameRef, desc: c4DescRef, wine: c4WineRef, descWidthRef: c4DescW }}
+        />
+        <View style={menuSt.courseSep} />
+        <MenuCourse
+          name="ནག་གུར་གུར།"
+          description="ནག་གུར་གུར་དྲོད་ལྡན། ཐའི་ཧི་ཊི་གི་གཤེར་མ།"
+          wine="མངར་ཆང་། པོར་ཏུ་གལ།"
+          textRefs={{ name: c5NameRef, desc: c5DescRef, wine: c5WineRef, descWidthRef: c5DescW }}
         />
       </View>
-
-      <Text style={menuSt.footer}>ご注文はスタッフにお申し付けください</Text>
-    </>
+    </View>
   );
 }
 
+/**
+ * Slide 0 outer shell — measures itself, then transform-scales the inner
+ * REF_W × REF_H content to fill the available space proportionally.
+ */
 export function MenuPageSlide() {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const scale = size ? Math.min(size.w / REF_W, size.h / REF_H) : 0;
+
   return (
-    <View style={menuSt.container}>
-      <MenuCardContent />
+    <View
+      style={menuSt.container}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setSize({ w: width, h: height });
+      }}
+    >
+      {scale > 0 && (
+        <View
+          style={{
+            position: 'absolute',
+            width: REF_W,
+            height: REF_H,
+            left: (size!.w - REF_W) / 2,
+            top: (size!.h - REF_H) / 2,
+            transform: [{ scale }],
+          }}
+        >
+          <MenuCardContent />
+        </View>
+      )}
+
+      {/* Unscaled English context label — always crisp, tells new users
+           what they're looking at before they've read the onboarding copy */}
+      <View style={menuSt.contextBadge} pointerEvents="none">
+        <Text style={menuSt.contextBadgeText}>📋  Restaurant Menu</Text>
+      </View>
     </View>
   );
 }
 
 const menuSt = StyleSheet.create({
+  // Outer shell — provides background, border-radius, clipping, and the
+  // measurement surface for onLayout.  No padding here so the inner content
+  // can be centered + scaled without any inherited offsets.
   container: {
     flex: 1,
     backgroundColor: MENU_BG,
     borderRadius: RADIUS,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 8,
     overflow: 'hidden',
+  },
+  // Inner padded content — sized to REF_W × REF_H via the transform container.
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 14,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 10,
   },
   restaurantName: {
     fontFamily: Fonts.bold,
-    fontSize: 14,
+    fontSize: 18,
     color: MENU_INK,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
   restaurantSub: {
     fontFamily: Fonts.regular,
-    fontSize: 8,
+    fontSize: 10,
     color: MENU_INK,
-    opacity: 0.55,
-    letterSpacing: 1.5,
-    marginTop: 2,
+    opacity: 0.5,
+    letterSpacing: 0.8,
+    marginTop: 3,
   },
   divider: {
-    height: 1,
-    backgroundColor: MENU_INK,
-    opacity: 0.2,
-    marginBottom: 6,
+    height: 1.5,
+    backgroundColor: MENU_ACCENT,
+    opacity: 0.5,
+    marginBottom: 8,
   },
   body: {
     flex: 1,
     justifyContent: 'space-evenly',
   },
-  section: {},
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 3,
-  },
-  sectionLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: MENU_INK,
-    opacity: 0.18,
-  },
-  sectionTitle: {
+  course: {},
+  courseName: {
     fontFamily: Fonts.bold,
-    fontSize: 10,
+    fontSize: 14,
     color: MENU_INK,
-    opacity: 0.6,
-    paddingHorizontal: 8,
-    letterSpacing: 1,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  itemName: {
-    fontFamily: Fonts.regular,
-    fontSize: 11,
-    color: MENU_INK,
-  },
-  dots: {
-    flex: 1,
-    fontFamily: Fonts.regular,
-    fontSize: 10,
-    color: MENU_INK,
-    opacity: 0.25,
-    textAlign: 'center',
-    overflow: 'hidden',
-  },
-  price: {
-    fontFamily: Fonts.bold,
-    fontSize: 11,
-    color: MENU_INK,
-    opacity: 0.85,
-    minWidth: 44,
-    textAlign: 'right',
-  },
-  footer: {
-    fontFamily: Fonts.regular,
-    fontSize: 8,
-    color: MENU_INK,
-    opacity: 0.35,
-    textAlign: 'center',
     letterSpacing: 0.5,
-    marginTop: 4,
+    marginBottom: 2,
+    alignSelf: 'flex-start', // shrink to text width so measureLayout returns content width
+  },
+  courseDesc: {
+    fontFamily: Fonts.regular,
+    fontSize: 11,
+    color: MENU_INK,
+    opacity: 0.72,
+    lineHeight: 16,
+    marginBottom: 3,
+    alignSelf: 'flex-start', // shrink to longest rendered line so measureLayout returns content width
+  },
+  courseWine: {
+    fontFamily: Fonts.regular,
+    fontSize: 10,
+    color: MENU_WINE,
+    opacity: 0.85,
+    alignSelf: 'flex-start', // shrink to text width so measureLayout returns content width
+  },
+  courseSep: {
+    height: 1,
+    backgroundColor: MENU_ACCENT,
+    opacity: 0.2,
+    marginVertical: 5,
+  },
+  // Context badge lives in the outer (unscaled) container so it is always
+  // pixel-sharp and legible regardless of the card's rendered size.
+  contextBadge: {
+    position: 'absolute',
+    bottom: 10,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(44, 26, 14, 0.55)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  contextBadgeText: {
+    fontFamily: Fonts.regular,
+    fontSize: 11,
+    color: '#F5E8C8',
+    letterSpacing: 0.4,
   },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Slide 1 · Scan Page
+// Slide 1 · Scan Page  (phone-frame mock-up)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Bounding boxes as percentages (0–100) of the camera-feed area.
- * Calibrated to sit over the actual text rendered by MenuCardContent.
+ * Renders the menu (at REF_W × REF_H, scaled to fit) and the live OCR overlays.
+ *
+ * `ocrBoxes`   — boxes in REF_W × REF_H pixel space (from MenuCardContent.measureAll).
+ * `onOcrBoxes` — forwarded to MenuCardContent to trigger measurement after layout.
+ *
+ * Box positioning (exact — same maths as the menu transform):
+ *   visual_left = scaledLeft + box.x * scale
+ *   visual_top  = scaledTop  + box.y * scale
+ *   visual_w    = box.w * scale
+ *   visual_h    = box.h * scale
  */
-const OCR_BOXES: Array<{ x: number; y: number; w: number; h: number }> = [
-  // ── Header ──────────────────────────────────────────────────────────────
-  { x:  8, y:  3, w: 72, h:  7 }, // restaurant name
-  { x: 16, y: 11, w: 58, h:  5 }, // subtitle
-  // ── 前菜 section ────────────────────────────────────────────────────────
-  { x: 22, y: 21, w: 44, h:  6 }, // section header
-  { x:  3, y: 29, w: 40, h:  6 }, // 枝豆
-  { x: 73, y: 29, w: 22, h:  6 }, // ¥380
-  { x:  3, y: 36, w: 55, h:  6 }, // 揚げ出し豆腐
-  { x: 73, y: 36, w: 22, h:  6 }, // ¥520
-  // ── 麺類 section ────────────────────────────────────────────────────────
-  { x: 22, y: 51, w: 44, h:  6 }, // section header
-  { x:  3, y: 59, w: 46, h:  6 }, // 醤油ラーメン
-  { x: 73, y: 59, w: 22, h:  6 }, // ¥890
-  { x:  3, y: 66, w: 28, h:  6 }, // つけ麺
-  { x: 73, y: 66, w: 22, h:  6 }, // ¥950
-  // ── 焼き物 section ──────────────────────────────────────────────────────
-  { x: 22, y: 79, w: 44, h:  6 }, // section header
-  { x:  3, y: 87, w: 54, h:  6 }, // 焼き鳥盛り合わせ
-  { x: 73, y: 87, w: 22, h:  6 }, // ¥1,200
-];
+function ScanCameraContent({
+  cameraW,
+  cameraH,
+  ocrBoxes,
+  onOcrBoxes,
+}: {
+  cameraW: number;
+  cameraH: number;
+  ocrBoxes: OcrBox[];
+  onOcrBoxes: (boxes: OcrBox[]) => void;
+}) {
+  const scale      = Math.min(cameraW / REF_W, cameraH / REF_H);
+  const scaledLeft = (cameraW - REF_W * scale) / 2;
+  const scaledTop  = (cameraH - REF_H * scale) / 2;
+  const layoutLeft = (cameraW - REF_W) / 2;
+  const layoutTop  = (cameraH - REF_H) / 2;
 
-export function ScanPageSlide() {
   return (
-    <View style={scanSt.container}>
-      {/* Header — mirrors the real scan screen header */}
-      <View style={scanSt.header}>
-        <Text style={scanSt.headerTitle}>MenuPic AI</Text>
-        <Text style={scanSt.headerSub}>
-          Detected {OCR_BOXES.length} text blocks
-        </Text>
+    <>
+      {/* Menu at reference size, scaled to fill camera area */}
+      <View
+        style={{
+          position: 'absolute',
+          width:  REF_W,
+          height: REF_H,
+          left: layoutLeft,
+          top:  layoutTop,
+          transform: [{ scale }],
+        }}
+      >
+        <MenuCardContent onOcrBoxes={onOcrBoxes} />
       </View>
 
-      {/* Camera feed — the same menu as slide 0, with OCR boxes on top */}
-      <View style={scanSt.camera}>
-        {/* Menu fills the camera area exactly as in slide 0 */}
-        <View style={[menuSt.container, scanSt.menuBackground]}>
-          <MenuCardContent />
-        </View>
+      {/* OCR highlight boxes — pixel-space coords scaled identically to the menu */}
+      {ocrBoxes.map((box, i) => (
+        <View
+          key={i}
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left:   scaledLeft + box.x * scale,
+            top:    scaledTop  + box.y * scale,
+            width:  box.w * scale,
+            height: box.h * scale,
+            backgroundColor: 'rgba(44,26,14,0.08)',
+            borderRadius: 2 * scale,
+            borderWidth: 1,
+            borderColor: 'rgba(44,26,14,0.50)',
+          }}
+        />
+      ))}
 
-        {/* OCR highlight bounding boxes — positioned over the real text */}
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-          {OCR_BOXES.map((box, i) => (
-            <View
-              key={i}
-              style={[
-                scanSt.box,
-                {
-                  left: `${box.x}%`,
-                  top: `${box.y}%`,
-                  width: `${box.w}%`,
-                  height: `${box.h}%`,
-                },
-              ]}
-            />
-          ))}
-        </View>
+      {/* Scanning corner brackets */}
+      {(['tl', 'tr', 'bl', 'br'] as const).map((corner) => (
+        <View key={corner} style={[scanSt.corner, scanSt[corner]]} pointerEvents="none" />
+      ))}
 
-        {/* Live-scan processing indicator */}
-        <View style={scanSt.processingDot}>
-          <Text style={scanSt.processingText}>●</Text>
-        </View>
+      {/* Live indicator */}
+      <View style={scanSt.liveChip} pointerEvents="none">
+        <View style={scanSt.liveDot} />
+        <Text style={scanSt.liveText}>SCANNING</Text>
       </View>
+    </>
+  );
+}
+
+/**
+ * Slide 1 outer shell — a phone-frame mock-up that scales to fill the
+ * carousel card, with the scan-screen UI inside.
+ */
+export function ScanPageSlide() {
+  const [cardSize, setCardSize] = useState<{ w: number; h: number } | null>(null);
+  const [camSize,  setCamSize]  = useState<{ w: number; h: number } | null>(null);
+  const [ocrBoxes, setOcrBoxes] = useState<OcrBox[]>([]);
+
+  return (
+    <View
+      style={scanSt.cardOuter}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCardSize({ w: width, h: height });
+      }}
+    >
+      {cardSize && (
+        <>
+          {/* ── Phone frame — silver aluminum body ── */}
+          <View style={[scanSt.phoneOuter, {
+            width:  cardSize.w * 0.8,
+            height: cardSize.h,
+          }]}>
+
+            {/* Hardware side buttons */}
+            <View style={[scanSt.sideBtn, scanSt.volUp]} />
+            <View style={[scanSt.sideBtn, scanSt.volDown]} />
+            <View style={[scanSt.sideBtn, scanSt.powerBtn]} />
+
+            {/* Screen glass — inset within the silver frame */}
+            <View style={scanSt.phoneScreen}>
+
+              {/* Dynamic Island */}
+              <View style={scanSt.island} />
+
+              {/* Screen area */}
+              <View style={scanSt.screen}>
+
+                {/* Status bar row */}
+                <View style={scanSt.statusBar}>
+                  <Text style={scanSt.statusTime}>9:41</Text>
+                  <View style={scanSt.statusIcons}>
+                    <Text style={scanSt.statusIcon}>●●●●</Text>
+                    <Text style={scanSt.statusIcon}>▮</Text>
+                  </View>
+                </View>
+
+                {/* App header */}
+                <View style={scanSt.appHeader}>
+                  <Text style={scanSt.appTitle}>MenuPic AI</Text>
+                  <Text style={scanSt.appSub}>
+                    {ocrBoxes.length > 0 ? `${ocrBoxes.length} text blocks detected` : 'Scanning…'}
+                  </Text>
+                </View>
+
+                {/* Camera feed */}
+                <View
+                  style={scanSt.camera}
+                  onLayout={(e) => {
+                    const { width, height } = e.nativeEvent.layout;
+                    setCamSize({ w: width, h: height });
+                  }}
+                >
+                  {camSize && (
+                    <ScanCameraContent
+                      cameraW={camSize.w}
+                      cameraH={camSize.h}
+                      ocrBoxes={ocrBoxes}
+                      onOcrBoxes={setOcrBoxes}
+                    />
+                  )}
+                </View>
+
+                {/* Context badge */}
+                <View style={scanSt.bottomBar}>
+                  <View style={scanSt.contextBadge}>
+                    <Text style={scanSt.contextBadgeText}>📷  Scanning...</Text>
+                  </View>
+                </View>
+
+              </View>
+
+              {/* Home indicator */}
+              <View style={scanSt.homeBar} />
+
+            </View>
+          </View>
+        </>
+      )}
     </View>
   );
 }
 
 const scanSt = StyleSheet.create({
-  container: {
+  // ── Outer carousel card shell ───────────────────────────────────────────────
+  cardOuter: {
     flex: 1,
     backgroundColor: Colors.dark,
     borderRadius: RADIUS,
     overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  header: {
+
+  // ── Phone frame — silver aluminum body ───────────────────────────────────────
+  phoneOuter: {
+    backgroundColor: '#C8C8C8',          // silver aluminum
+    borderRadius: 44,
+    padding: 7,                           // creates the visible frame ring
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)', // polished-edge highlight
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+
+  // ── Hardware side buttons (protrude from the silver frame) ────────────────
+  sideBtn: {
+    position: 'absolute',
+    backgroundColor: '#ABABAB',          // slightly darker = machined recess
+    borderRadius: 2,
+  },
+  volUp:    { left: -3, top: '24%', width: 4, height: 22 } as any,
+  volDown:  { left: -3, top: '33%', width: 4, height: 22 } as any,
+  powerBtn: { right: -3, top: '29%', width: 4, height: 38 } as any,
+
+  // ── Screen glass — inset display within the silver frame ─────────────────
+  phoneScreen: {
+    flex: 1,
+    width: '100%',
+    borderRadius: 37,                    // frame radius minus padding
+    overflow: 'hidden',
+    backgroundColor: Colors.dark,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.5)',      // dark ring at glass-to-frame junction
+    alignItems: 'center',
+  },
+
+  island: {
+    width: 80,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#000000',
+    marginTop: 8,
+    zIndex: 10,
+  },
+
+  // ── Screen inside the phone ──────────────────────────────────────────────────
+  screen: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: Colors.dark,
+    overflow: 'hidden',
+  },
+  statusBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  statusTime: {
+    color: Colors.textOnDark,
+    fontFamily: Fonts.bold,
+    fontSize: 9,
+  },
+  statusIcons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  statusIcon: {
+    color: Colors.textOnDark,
+    fontFamily: Fonts.regular,
+    fontSize: 6,
+    opacity: 0.7,
+  },
+  appHeader: {
     backgroundColor: Colors.dark,
     paddingHorizontal: 12,
-    paddingTop: 10,
     paddingBottom: 6,
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: Colors.dividerDark,
   },
-  headerTitle: {
+  appTitle: {
     color: Colors.textOnDark,
     fontFamily: Fonts.bold,
-    fontSize: 13,
+    fontSize: 11,
   },
-  headerSub: {
+  appSub: {
     color: Colors.textOnDark,
     fontFamily: Fonts.regular,
-    fontSize: 9,
+    fontSize: 8,
     opacity: 0.5,
-    marginTop: 2,
+    marginTop: 1,
   },
   camera: {
     flex: 1,
     backgroundColor: MENU_BG,
     overflow: 'hidden',
   },
-  // Overrides applied to menuSt.container when used as the camera background:
-  // removes the card's own border-radius (the camera view already clips corners)
-  menuBackground: {
-    borderRadius: 0,
-  },
-  // OCR highlight boxes — dark ink tint to stand out on the parchment background
-  box: {
+
+  // ── Scan overlay UI ──────────────────────────────────────────────────────────
+  // Corner bracket marks shown at the four corners of the camera feed
+  corner: {
     position: 'absolute',
-    backgroundColor: 'rgba(44,26,14,0.10)',
+    width: 16,
+    height: 16,
+    borderColor: 'rgba(44,26,14,0.65)',
+    borderWidth: 0,
+  },
+  tl: { top: 6, left: 6,   borderTopWidth: 2.5, borderLeftWidth:  2.5 },
+  tr: { top: 6, right: 6,  borderTopWidth: 2.5, borderRightWidth: 2.5 },
+  bl: { bottom: 6, left: 6,   borderBottomWidth: 2.5, borderLeftWidth:  2.5 },
+  br: { bottom: 6, right: 6,  borderBottomWidth: 2.5, borderRightWidth: 2.5 },
+
+  liveChip: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(31,41,51,0.72)',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    gap: 4,
+  },
+  liveDot: {
+    width: 5,
+    height: 5,
     borderRadius: 3,
-    borderWidth: 1.5,
-    borderColor: 'rgba(44,26,14,0.45)',
+    backgroundColor: '#E84040',
   },
-  processingDot: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: 'rgba(31,41,51,0.55)',
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  processingText: {
+  liveText: {
     color: Colors.textOnDark,
+    fontFamily: Fonts.bold,
+    fontSize: 7,
+    letterSpacing: 0.5,
+  },
+
+  // ── Bottom bar with Scan button ──────────────────────────────────────────────
+  bottomBar: {
+    backgroundColor: Colors.dark,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderTopWidth: 1,
+    borderTopColor: Colors.dividerDark,
+    alignItems: 'center',
+  },
+  contextBadge: {
+    backgroundColor: 'rgba(44, 26, 14, 0.55)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  contextBadgeText: {
     fontFamily: Fonts.regular,
-    fontSize: 8,
-    opacity: 0.7,
+    fontSize: 11,
+    color: '#F5E8C8',
+    letterSpacing: 0.4,
+  },
+
+  // ── Home indicator ───────────────────────────────────────────────────────────
+  homeBar: {
+    width: 80,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginBottom: 6,
+    marginTop: 4,
   },
 });
 
