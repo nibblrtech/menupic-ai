@@ -11,7 +11,7 @@
  *   2 · ResultPageSlide — the result card with simulated AI dish image & details
  */
 import React, { useCallback, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { Colors, Fonts, Spacing } from '../constants/DesignSystem';
 
 const RADIUS = Spacing.md; // 24 — matches carousel item border-radius
@@ -249,50 +249,69 @@ function MenuCardContent({
  * REF_W × REF_H content to fill the available space proportionally.
  */
 export function MenuPageSlide() {
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const scale = size ? Math.min(size.w / REF_W, size.h / REF_H) : 0;
+  const [paperSize, setPaperSize] = useState<{ w: number; h: number } | null>(null);
+  const scale = paperSize ? Math.min(paperSize.w / REF_W, paperSize.h / REF_H) : 0;
 
   return (
-    <View
-      style={menuSt.container}
-      onLayout={(e) => {
-        const { width, height } = e.nativeEvent.layout;
-        setSize({ w: width, h: height });
-      }}
-    >
-      {scale > 0 && (
-        <View
-          style={{
-            position: 'absolute',
-            width: REF_W,
-            height: REF_H,
-            left: (size!.w - REF_W) / 2,
-            top: (size!.h - REF_H) / 2,
-            transform: [{ scale }],
-          }}
-        >
-          <MenuCardContent />
-        </View>
-      )}
+    // Outer card — dark surface, like a table the menu is resting on
+    <View style={menuSt.container}>
 
-      {/* Unscaled English context label — always crisp, tells new users
-           what they're looking at before they've read the onboarding copy */}
+      {/* Physical menu paper — sharp corners, drop shadow */}
+      <View
+        style={menuSt.paper}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          setPaperSize({ w: width, h: height });
+        }}
+      >
+        {scale > 0 && (
+          <View
+            style={{
+              position: 'absolute',
+              width: REF_W,
+              height: REF_H,
+              left: (paperSize!.w - REF_W) / 2,
+              top:  (paperSize!.h - REF_H) / 2,
+              transform: [{ scale }],
+            }}
+          >
+            <MenuCardContent />
+          </View>
+        )}
+      </View>
+
+      {/* Badge sits below the paper, on the dark surface */}
       <View style={menuSt.contextBadge} pointerEvents="none">
         <Text style={menuSt.contextBadgeText}>📋  Restaurant Menu</Text>
       </View>
+
     </View>
   );
 }
 
 const menuSt = StyleSheet.create({
-  // Outer shell — provides background, border-radius, clipping, and the
-  // measurement surface for onLayout.  No padding here so the inner content
-  // can be centered + scaled without any inherited offsets.
+  // Outer card — dark surface (table), no rounding/clipping of its own
   container: {
     flex: 1,
-    backgroundColor: MENU_BG,
+    backgroundColor: Colors.dark,
     borderRadius: RADIUS,
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  // Physical menu paper — sharp corners, warm parchment, drop shadow
+  paper: {
+    width: '100%',
+    flex: 1,
+    backgroundColor: MENU_BG,
+    // No borderRadius — menus have sharp corners
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    elevation: 8,
   },
   // Inner padded content — sized to REF_W × REF_H via the transform container.
   content: {
@@ -360,13 +379,10 @@ const menuSt = StyleSheet.create({
     opacity: 0.2,
     marginVertical: 5,
   },
-  // Context badge lives in the outer (unscaled) container so it is always
-  // pixel-sharp and legible regardless of the card's rendered size.
+  // Badge sits in normal flow below the paper on the dark surface
   contextBadge: {
-    position: 'absolute',
-    bottom: 10,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(44, 26, 14, 0.55)',
+    marginTop: 8,
+    backgroundColor: 'rgba(255, 246, 238, 0.15)',
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 4,
@@ -374,8 +390,9 @@ const menuSt = StyleSheet.create({
   contextBadgeText: {
     fontFamily: Fonts.regular,
     fontSize: 11,
-    color: '#F5E8C8',
+    color: Colors.textOnDark,
     letterSpacing: 0.4,
+    opacity: 0.7,
   },
 });
 
@@ -494,20 +511,18 @@ export function ScanPageSlide() {
             {/* Screen glass — inset within the silver frame */}
             <View style={scanSt.phoneScreen}>
 
-              {/* Dynamic Island */}
-              <View style={scanSt.island} />
+              {/* Status bar row — wraps around the Dynamic Island like a real iPhone */}
+              <View style={scanSt.statusRow}>
+                <Text style={scanSt.statusTime}>9:41</Text>
+                <View style={scanSt.island} />
+                <View style={scanSt.statusIcons}>
+                  <Text style={scanSt.statusIcon}>●●●●</Text>
+                  <Text style={scanSt.statusIcon}>▮</Text>
+                </View>
+              </View>
 
               {/* Screen area */}
               <View style={scanSt.screen}>
-
-                {/* Status bar row */}
-                <View style={scanSt.statusBar}>
-                  <Text style={scanSt.statusTime}>9:41</Text>
-                  <View style={scanSt.statusIcons}>
-                    <Text style={scanSt.statusIcon}>●●●●</Text>
-                    <Text style={scanSt.statusIcon}>▮</Text>
-                  </View>
-                </View>
 
                 {/* App header */}
                 <View style={scanSt.appHeader}>
@@ -533,13 +548,6 @@ export function ScanPageSlide() {
                       onOcrBoxes={setOcrBoxes}
                     />
                   )}
-                </View>
-
-                {/* Context badge */}
-                <View style={scanSt.bottomBar}>
-                  <View style={scanSt.contextBadge}>
-                    <Text style={scanSt.contextBadgeText}>📷  Scanning...</Text>
-                  </View>
                 </View>
 
               </View>
@@ -602,13 +610,21 @@ const scanSt = StyleSheet.create({
     alignItems: 'center',
   },
 
+  // ── Status row — time | Dynamic Island | icons, all in one flex row ────────
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: 2,
+  },
   island: {
-    width: 80,
-    height: 22,
-    borderRadius: 11,
+    width: 72,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#000000',
-    marginTop: 8,
-    zIndex: 10,
   },
 
   // ── Screen inside the phone ──────────────────────────────────────────────────
@@ -618,14 +634,7 @@ const scanSt = StyleSheet.create({
     backgroundColor: Colors.dark,
     overflow: 'hidden',
   },
-  statusBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingTop: 4,
-    paddingBottom: 4,
-  },
+  statusBar: {}, // retained to avoid stale references
   statusTime: {
     color: Colors.textOnDark,
     fontFamily: Fonts.bold,
@@ -741,146 +750,211 @@ const scanSt = StyleSheet.create({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Slide 2 · Result Page
+// Identical phone frame + scan content as Slide 1, with the result dialog
+// popup overlaid on top — exactly as it appears in the real app.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Yakitori piece colours alternated across the row */
-const PIECE_COLORS = [
-  { bg: '#C4701A', border: '#E88A25' }, // thigh — amber
-  { bg: '#8C4D0C', border: '#B8671A' }, // tsukune — dark brown
-  { bg: '#C4701A', border: '#E88A25' },
-  { bg: '#A3591A', border: '#CC7820' }, // breast — mid-brown
-  { bg: '#8C4D0C', border: '#B8671A' },
-  { bg: '#C4701A', border: '#E88A25' },
-];
-
-export function ResultPageSlide() {
+/**
+ * The result dialog popup — matches the real MenuInteractionOverlay "Portal 3"
+ * result card, scaled for the small phone-frame viewport.
+ */
+function ResultPopup() {
   return (
-    <View style={resultSt.container}>
-      {/* ── Simulated AI-generated food photo ─────────────────────────────── */}
-      <View style={resultSt.imageArea}>
-        {/* Charcoal-grill stripe pattern */}
-        {[0, 1, 2, 3].map(i => (
-          <View key={i} style={[resultSt.grillLine, { top: 8 + i * 16 }]} />
-        ))}
+    <View style={resultSt.popupOverlay}>
+      <View style={resultSt.resultCard}>
 
-        {/* Row of yakitori pieces */}
-        <View style={resultSt.piecesRow}>
-          {PIECE_COLORS.map((c, i) => (
-            <View
-              key={i}
-              style={[
-                resultSt.piece,
-                i % 2 === 1 ? resultSt.pieceSmall : null,
-                { backgroundColor: c.bg, borderColor: c.border },
-              ]}
-            />
-          ))}
+        {/* ── AI-generated food photo ─────────────────────────────────────── */}
+        <View style={resultSt.imageArea}>
+          <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=600&auto=format&fit=crop' }}
+            style={resultSt.dishPhoto}
+            resizeMode="cover"
+          />
+          {/* AI badge */}
+          <View style={resultSt.aiBadge}>
+            <Text style={resultSt.aiText}>AI ✨</Text>
+          </View>
         </View>
 
-        {/* Warm glaze sheen overlay */}
-        <View style={resultSt.sheen} />
+        {/* ── Dish name ─────────────────────────────────────────────────────── */}
+        <Text style={resultSt.dishTitle}>ཤ་ལྷ།</Text>
+        <Text style={resultSt.dishSub}>Sha Lha · Celestial Braised Fish</Text>
 
-        {/* AI label */}
-        <View style={resultSt.aiBadge}>
-          <Text style={resultSt.aiText}>AI ✨</Text>
+        <View style={resultSt.divider} />
+
+        {/* ── Description ───────────────────────────────────────────────────── */}
+        <Text style={resultSt.sectionLabel}>Description</Text>
+        <Text style={resultSt.bodyText}>
+          A revered highland preparation from the Lhasa culinary tradition. Premium river fish is
+          slow-steamed over smoldering juniper sprigs with hand-pressed citrus oils, then finished
+          in a delicate broth of wild plateau herbs and mineral-rich glacial water.{'\n\n'}
+          The name <Text style={resultSt.bodyItalic}>Sha Lha</Text> — literally "sacred flesh
+          offering" — reflects the ancient Tibetan belief that a meal prepared with intention
+          carries spiritual merit for both cook and guest. Historically served during Losar
+          (Tibetan New Year) banquets hosted by noble families in the Potala quarter.{'\n\n'}
+          Finished with a scattering of crispy roasted tsampa crumbs and edible alpine flowers
+          foraged from the Nyenchen Tanglha range.
+        </Text>
+
+        {/* ── Done button ────────────────────────────────────────────────────── */}
+        <View style={resultSt.doneButton}>
+          <Text style={resultSt.doneText}>Done</Text>
         </View>
-      </View>
 
-      {/* ── Dish info ──────────────────────────────────────────────────────── */}
-      <Text style={resultSt.dishTitle}>焼き鳥盛り合わせ</Text>
-      <Text style={resultSt.dishSub}>Yakitori Assortment</Text>
-
-      <View style={resultSt.divider} />
-
-      <Text style={resultSt.sectionLabel}>DESCRIPTION</Text>
-      <Text style={resultSt.body} numberOfLines={2}>
-        Skewered grilled chicken over charcoal — thigh, breast & tsukune meatballs with tare glaze.
-      </Text>
-
-      {/* ── Done button ────────────────────────────────────────────────────── */}
-      <View style={resultSt.doneButton}>
-        <Text style={resultSt.doneText}>Done</Text>
       </View>
     </View>
   );
 }
 
+/**
+ * Slide 2 outer shell — same phone frame and scan content as ScanPageSlide,
+ * with the result card popup rendered as an absolute overlay inside the screen.
+ */
+export function ResultPageSlide() {
+  const [cardSize, setCardSize] = useState<{ w: number; h: number } | null>(null);
+  const [camSize,  setCamSize]  = useState<{ w: number; h: number } | null>(null);
+  const [ocrBoxes, setOcrBoxes] = useState<OcrBox[]>([]);
+
+  return (
+    <View
+      style={scanSt.cardOuter}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCardSize({ w: width, h: height });
+      }}
+    >
+      {cardSize && (
+        // ── Identical phone frame to ScanPageSlide ──────────────────────────
+        <View style={[scanSt.phoneOuter, {
+          width:  cardSize.w * 0.8,
+          height: cardSize.h,
+        }]}>
+
+          {/* Hardware side buttons */}
+          <View style={[scanSt.sideBtn, scanSt.volUp]} />
+          <View style={[scanSt.sideBtn, scanSt.volDown]} />
+          <View style={[scanSt.sideBtn, scanSt.powerBtn]} />
+
+          {/* Screen glass */}
+          <View style={scanSt.phoneScreen}>
+
+            {/* Status row — time | Dynamic Island | icons */}
+            <View style={scanSt.statusRow}>
+              <Text style={scanSt.statusTime}>9:41</Text>
+              <View style={scanSt.island} />
+              <View style={scanSt.statusIcons}>
+                <Text style={scanSt.statusIcon}>●●●●</Text>
+                <Text style={scanSt.statusIcon}>▮</Text>
+              </View>
+            </View>
+
+            {/* Screen area — same scan content as card 2 */}
+            <View style={scanSt.screen}>
+
+              {/* App header (same) */}
+              <View style={scanSt.appHeader}>
+                <Text style={scanSt.appTitle}>MenuPic AI</Text>
+                <Text style={scanSt.appSub}>
+                  {ocrBoxes.length > 0 ? `${ocrBoxes.length} text blocks detected` : 'Scanning…'}
+                </Text>
+              </View>
+
+              {/* Camera feed — same menu + OCR boxes as card 2 */}
+              <View
+                style={scanSt.camera}
+                onLayout={(e) => {
+                  const { width, height } = e.nativeEvent.layout;
+                  setCamSize({ w: width, h: height });
+                }}
+              >
+                {camSize && (
+                  <ScanCameraContent
+                    cameraW={camSize.w}
+                    cameraH={camSize.h}
+                    ocrBoxes={ocrBoxes}
+                    onOcrBoxes={setOcrBoxes}
+                  />
+                )}
+              </View>
+
+              {/* ── Result popup — absolute overlay on top of the scan screen ── */}
+              <ResultPopup />
+
+            </View>
+
+            {/* Home indicator */}
+            <View style={scanSt.homeBar} />
+
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 const resultSt = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.light,
-    borderRadius: RADIUS,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 10,
-    overflow: 'hidden',
+  // ── Full-screen dark overlay (matches Colors.overlay from the real app) ────
+  popupOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.60)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 16,
+    zIndex: 20,
   },
-  // ── AI image area ─────────────────────────────────────────────────────────
+
+  // ── Result card — mirrors the real MenuInteractionOverlay resultCard style ─
+  resultCard: {
+    width: '100%',
+    backgroundColor: Colors.light,         // #fff6ee
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+
+  // ── Simulated AI dish image ───────────────────────────────────────────────
   imageArea: {
-    height: 72,
-    borderRadius: 10,
-    backgroundColor: '#1E0C04',
+    height: 155,
+    borderRadius: 6,
+    backgroundColor: Colors.dividerLight,
     marginBottom: 8,
     overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  grillLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: '#0A0402',
-    opacity: 0.65,
-  },
-  piecesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    zIndex: 1,
-  },
-  piece: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1,
-    elevation: 2,
-  },
-  pieceSmall: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-  },
-  sheen: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,150,40,0.06)',
+  dishPhoto: {
+    width: '100%',
+    height: '100%',
   },
   aiBadge: {
     position: 'absolute',
-    top: 6,
-    right: 8,
+    top: 4,
+    right: 6,
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 8,
-    paddingHorizontal: 6,
+    borderRadius: 6,
+    paddingHorizontal: 4,
     paddingVertical: 2,
     zIndex: 2,
   },
   aiText: {
     color: '#ffffff',
     fontFamily: Fonts.bold,
-    fontSize: 9,
+    fontSize: 7,
   },
+
   // ── Text content ──────────────────────────────────────────────────────────
   dishTitle: {
     fontFamily: Fonts.bold,
-    fontSize: 13,
+    fontSize: 11,
     color: Colors.textOnLight,
     marginBottom: 1,
   },
   dishSub: {
     fontFamily: Fonts.regular,
-    fontSize: 10,
+    fontSize: 9,
     color: Colors.textOnLight,
     opacity: 0.5,
     marginBottom: 4,
@@ -892,24 +966,31 @@ const resultSt = StyleSheet.create({
   },
   sectionLabel: {
     fontFamily: Fonts.bold,
-    fontSize: 8,
+    fontSize: 7,
     color: Colors.textOnLight,
     opacity: 0.45,
-    letterSpacing: 1,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    marginBottom: 3,
+    marginBottom: 2,
   },
-  body: {
+  bodyText: {
     fontFamily: Fonts.regular,
-    fontSize: 10,
+    fontSize: 9,
     color: Colors.textOnLight,
-    lineHeight: 15,
+    lineHeight: 13,
     opacity: 0.75,
-    flex: 1,
+    marginBottom: 2,
   },
-  // ── Done button ───────────────────────────────────────────────────────────
+  bodyItalic: {
+    fontFamily: Fonts.regular,
+    fontSize: 9,
+    color: Colors.textOnLight,
+    fontStyle: 'italic',
+  },
+
+  // ── Done button — matches real app Button style ───────────────────────────
   doneButton: {
-    height: 30,
+    height: 26,
     borderRadius: 20,
     backgroundColor: Colors.dark,
     justifyContent: 'center',
@@ -918,7 +999,7 @@ const resultSt = StyleSheet.create({
   },
   doneText: {
     fontFamily: Fonts.bold,
-    fontSize: 12,
+    fontSize: 10,
     color: Colors.textOnDark,
   },
 });

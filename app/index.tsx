@@ -181,7 +181,7 @@ export default function HomeScreen() {
               data={SLIDES}
               loop
               autoPlay
-              autoPlayInterval={3500}
+              autoPlayInterval={10000}
               onProgressChange={progress}
               renderItem={renderCarouselItem}
               style={styles.carousel}
