@@ -570,14 +570,14 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: Colors.dark,
     paddingHorizontal: Spacing.sm,
-    paddingBottom: Spacing.xs,
+    paddingBottom: Spacing.sm,
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: Colors.dividerDark,
   },
   headerText: {
     color: Colors.textOnDark,
-    fontSize: FontSize.normal,
+    fontSize: FontSize.title,
     fontFamily: Fonts.bold,
   },
   headerSubtext: {

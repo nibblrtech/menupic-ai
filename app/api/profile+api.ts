@@ -28,12 +28,20 @@ export async function GET(request: Request) {
     if (error) {
       // PGRST116 = no rows found — create a new profile for this user
       if (error.code === 'PGRST116') {
+        // Check if this user_id has previously deleted their account.
+        // If so, they do not receive free scans on re-registration.
+        const { data: tombstone } = await supabase
+          .from('deleted_users')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
         const now = new Date().toISOString();
         const newProfile = {
           user_id: userId,
           created_at: now,
           updated_at: now,
-          scans: DEFAULT_FREE_SCANS,
+          scans: tombstone ? 0 : DEFAULT_FREE_SCANS,
         };
 
         const { data: created, error: insertError } = await supabase

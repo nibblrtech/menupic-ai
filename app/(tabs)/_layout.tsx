@@ -13,7 +13,7 @@ export default function TabLayout() {
           backgroundColor: Colors.dark,
           borderTopColor: 'rgba(255,246,238,0.12)',
           borderTopWidth: 1,
-          height: 56,
+          height: 72,
         },
         tabBarLabelStyle: {
           fontFamily: Fonts.regular,

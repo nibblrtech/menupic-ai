@@ -22,6 +22,13 @@ export const Colors = {
   dividerLight: 'rgba(31,41,51,0.12)',
   /** Subtle divider / border tint used on dark surfaces */
   dividerDark: 'rgba(255,246,238,0.12)',
+  // ─── Semantic status colors ───────────────────────────────────────────────
+  /** Informational — blue */
+  info: '#3B82F6',
+  /** Warning — amber */
+  warning: '#E9C46A',
+  /** Error / destructive action — orange-red */
+  error: '#E76F51',
 } as const;
 
 // ─── Fonts ───────────────────────────────────────────────────────────────────

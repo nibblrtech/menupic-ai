@@ -32,6 +32,14 @@
 | `Colors.dividerLight` | `rgba(31,41,51,0.12)` | Borders / dividers on light surfaces |
 | `Colors.dividerDark` | `rgba(255,246,238,0.12)` | Borders / dividers on dark surfaces |
 
+### Semantic status colors
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| `Colors.info` | `#3B82F6` | Informational states, badges, hints |
+| `Colors.warning` | `#E9C46A` | Warnings, caution states |
+| `Colors.error` | `#E76F51` | Errors, destructive actions (e.g. Delete Account) |
+
 **Rule:** text color always matches the surface it sits on — `textOnDark` on dark, `textOnLight` on light.
 
 ---
