@@ -1,12 +1,14 @@
 import { StatusBar } from "expo-status-bar";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../../constants/DesignSystem";
 import { useAuth } from "../../contexts/AuthContext";
+import { useProfile } from "../../contexts/ProfileContext";
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const { userId, email, signOut } = useAuth();
+  const { profile, isLoading: profileLoading } = useProfile();
   const _btn = buttonColors('light');
 
   return (
@@ -31,6 +33,16 @@ export default function AccountScreen() {
             )}
           </View>
         )}
+        <View style={styles.scansContainer}>
+          <Text style={styles.scansLabel}>Scans remaining</Text>
+          {profileLoading && !profile ? (
+            <ActivityIndicator color={Colors.textOnDark} style={{ marginTop: 4 }} />
+          ) : (
+            <Text style={styles.scansValue}>
+              {profile?.scans ?? '—'}
+            </Text>
+          )}
+        </View>
         <Pressable style={[styles.signOutButton, { backgroundColor: _btn.bg }]} onPress={signOut}>
           <Text style={[styles.signOutText, { color: _btn.text }]}>Sign Out</Text>
         </Pressable>
@@ -102,6 +114,30 @@ const styles = StyleSheet.create({
     color: Colors.textOnDark,
     fontSize: FontSize.normal,
     fontFamily: Fonts.bold,
+  },
+  scansContainer: {
+    backgroundColor: 'rgba(255,246,238,0.07)',
+    borderRadius: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.dividerDark,
+    width: '100%',
+  },
+  scansLabel: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    opacity: 0.5,
+    marginBottom: 4,
+  },
+  scansValue: {
+    color: Colors.textOnDark,
+    fontSize: 40,
+    fontFamily: Fonts.bold,
+    lineHeight: 48,
   },
   signOutButton: {
     height: Btn.height,
