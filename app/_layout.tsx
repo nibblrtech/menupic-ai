@@ -6,6 +6,7 @@ import { configureReanimatedLogger, ReanimatedLogLevel } from "react-native-rean
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "../contexts/AuthContext";
 import { ProfileProvider } from "../contexts/ProfileContext";
+import { SubscriptionProvider } from "../contexts/SubscriptionContext";
 
 // Keep the splash screen visible while fonts load
 SplashScreen.preventAutoHideAsync();
@@ -34,12 +35,14 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <ProfileProvider>
-        <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-        </SafeAreaProvider>
+        <SubscriptionProvider>
+            <SafeAreaProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="(tabs)" />
+                </Stack>
+            </SafeAreaProvider>
+        </SubscriptionProvider>
       </ProfileProvider>
     </AuthProvider>
   );

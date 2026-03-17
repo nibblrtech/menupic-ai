@@ -17,11 +17,36 @@ export class UserProfile {
   /** Remaining scan credits for the user. */
   readonly scans: number;
 
-  constructor(userId: string, createdAt: Date, updatedAt: Date, scans: number) {
+  /** RevenueCat product ID of the active subscription, or null. */
+  readonly subscriptionProductId: string | null;
+
+  /** When the current subscription started. */
+  readonly subscriptionStartedAt: Date | null;
+
+  /** When scans were last credited (for monthly crediting of annual subs). */
+  readonly lastScanCreditAt: Date | null;
+
+  /** Whether the user has an active subscription (set by webhooks). */
+  readonly subscriptionActive: boolean;
+
+  constructor(
+    userId: string,
+    createdAt: Date,
+    updatedAt: Date,
+    scans: number,
+    subscriptionProductId: string | null = null,
+    subscriptionStartedAt: Date | null = null,
+    lastScanCreditAt: Date | null = null,
+    subscriptionActive: boolean = false,
+  ) {
     this.userId = userId;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
     this.scans = scans;
+    this.subscriptionProductId = subscriptionProductId;
+    this.subscriptionStartedAt = subscriptionStartedAt;
+    this.lastScanCreditAt = lastScanCreditAt;
+    this.subscriptionActive = subscriptionActive;
   }
 
   /**
@@ -33,12 +58,20 @@ export class UserProfile {
     created_at: string;
     updated_at: string;
     scans: number;
+    subscription_product_id?: string | null;
+    subscription_started_at?: string | null;
+    last_scan_credit_at?: string | null;
+    subscription_active?: boolean;
   }): UserProfile {
     return new UserProfile(
       json.user_id,
       new Date(json.created_at),
       new Date(json.updated_at),
       json.scans,
+      json.subscription_product_id ?? null,
+      json.subscription_started_at ? new Date(json.subscription_started_at) : null,
+      json.last_scan_credit_at ? new Date(json.last_scan_credit_at) : null,
+      json.subscription_active ?? false,
     );
   }
 }

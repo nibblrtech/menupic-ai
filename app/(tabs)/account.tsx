@@ -13,12 +13,11 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import MyPlanContent from '../../components/MyPlanContent';
 import { Button as Btn, Colors, Fonts, FontSize, Spacing } from '../../constants/DesignSystem';
 import { useAuth } from '../../contexts/AuthContext';
 
 type ConfirmModal = 'logout' | 'delete' | null;
-
-const ACCORDION_HEIGHT = 120; // px — will be replaced with real content next iteration
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
@@ -29,20 +28,21 @@ export default function AccountScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const planAnim = useRef(new Animated.Value(0)).current;
+  const [contentHeight, setContentHeight] = useState(0);
 
   const togglePlan = () => {
     const next = !planOpen;
     setPlanOpen(next);
     Animated.timing(planAnim, {
       toValue: next ? 1 : 0,
-      duration: 220,
+      duration: 280,
       useNativeDriver: false,
     }).start();
   };
 
   const accordionHeight = planAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, ACCORDION_HEIGHT],
+    outputRange: [0, contentHeight || 400],
   });
 
   const chevronAngle = planAnim.interpolate({
@@ -108,8 +108,14 @@ export default function AccountScreen() {
               </Animated.View>
             </Pressable>
             <Animated.View style={{ height: accordionHeight, overflow: 'hidden' }}>
-              <View style={styles.accordionInner}>
-                {/* Plan details — coming soon */}
+              <View
+                style={styles.accordionInner}
+                onLayout={(e) => {
+                  const h = e.nativeEvent.layout.height;
+                  if (h > 0 && h !== contentHeight) setContentHeight(h);
+                }}
+              >
+                <MyPlanContent />
               </View>
             </Animated.View>
           </View>
@@ -264,9 +270,6 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.dividerDark,
-    minHeight: ACCORDION_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   // ── Modals ────────────────────────────────────────────
   overlay: {

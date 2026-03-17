@@ -5,7 +5,8 @@ import TextRecognition, {
 import { useIsFocused } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import RevenueCatUI from 'react-native-purchases-ui';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
     Camera,
@@ -15,6 +16,8 @@ import {
 } from "react-native-vision-camera";
 import { MenuInteractionOverlay } from "../../components/MenuInteractionOverlay";
 import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../../constants/DesignSystem";
+import { useProfile } from "../../contexts/ProfileContext";
+import { useSubscription } from "../../contexts/SubscriptionContext";
 
 interface BoundingBox {
   x: number;
@@ -306,7 +309,16 @@ export default function ScanScreen() {
   const cameraRef = useRef<Camera>(null);
   const overlayRef = useRef<any>(null);
   const isFocused = useIsFocused();
-  
+
+  // ── Paywall gate ──
+  const {
+    needsPaywall,
+    isLoading: subLoading,
+    menuPicOffering,
+  } = useSubscription();
+  const { refreshProfile, isLoading: profileLoading } = useProfile();
+
+  // All hooks must be called unconditionally (Rules of Hooks)
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
@@ -356,7 +368,7 @@ export default function ScanScreen() {
 
         const photo = Platform.OS === 'android'
           ? await cameraRef.current.takeSnapshot({ quality: 85 })
-          : await cameraRef.current.takePhoto({ flash: 'off' });
+          : await cameraRef.current.takePhoto({ flash: 'off', enableShutterSound: false });
 
         if (cancelledRef.current) return;
 
@@ -408,6 +420,42 @@ export default function ScanScreen() {
     const { width, height } = event.nativeEvent.layout;
     setCameraLayout({ width, height });
   };
+
+  // ── Early returns (AFTER all hooks) ──
+
+  // Show a loading indicator while subscription/profile data is loading
+  if (subLoading || profileLoading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.permissionContainer}>
+          <ActivityIndicator size="large" color={Colors.textOnDark} />
+        </View>
+      </View>
+    );
+  }
+
+  // Gate access to the scan page with the RevenueCat paywall
+  if (needsPaywall) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.dark }}>
+        <StatusBar style="light" />
+        <RevenueCatUI.Paywall
+          options={{
+            offering: menuPicOffering ?? undefined,
+            displayCloseButton: false,
+          }}
+          onPurchaseCompleted={() => {
+            // Refresh profile to pick up scans credited by webhook
+            refreshProfile();
+          }}
+          onRestoreCompleted={() => {
+            refreshProfile();
+          }}
+        />
+      </View>
+    );
+  }
 
   if (hasPermission === null) {
     return (
