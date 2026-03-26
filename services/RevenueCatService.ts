@@ -8,7 +8,7 @@
  * RevenueCat dashboard, App Store Connect, and Google Play Console.
  */
 import { Platform } from 'react-native';
-import Purchases, { LOG_LEVEL } from 'react-native-purchases';
+import Purchases, { LOG_LEVEL, type LogHandler } from 'react-native-purchases';
 
 // ─── Revenue Cat API keys ────────────────────────────────────────────────────
 // Replace these with your real keys from the RevenueCat dashboard.
@@ -50,7 +50,30 @@ export async function configureRevenueCat(): Promise<void> {
   if (_configured) return;
 
   if (__DEV__) {
-    Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    // Custom log handler: suppress purchase-cancellation errors that the SDK
+    // logs at ERROR level (they trigger LogBox / red-bar in dev).
+    const cancelPattern = /cancel/i;
+
+    const handler: LogHandler = (logLevel, message) => {
+      if (logLevel === LOG_LEVEL.ERROR && cancelPattern.test(message)) {
+        // Silently swallow cancellation errors
+        return;
+      }
+
+      switch (logLevel) {
+        case LOG_LEVEL.ERROR:
+          console.error(`[RevenueCat] ${message}`);
+          break;
+        case LOG_LEVEL.WARN:
+          console.warn(`[RevenueCat] ${message}`);
+          break;
+        default:
+          console.log(`[RevenueCat] ${message}`);
+          break;
+      }
+    };
+
+    Purchases.setLogHandler(handler);
   }
 
   const apiKey = Platform.OS === 'ios' ? RC_IOS_API_KEY : RC_ANDROID_API_KEY;

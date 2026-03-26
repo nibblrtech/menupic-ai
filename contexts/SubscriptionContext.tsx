@@ -24,6 +24,7 @@ import React, {
 } from 'react';
 import { Alert, Platform } from 'react-native';
 import Purchases, {
+    PURCHASES_ERROR_CODE,
     type CustomerInfo,
     type PurchasesOffering,
     type PurchasesOfferings,
@@ -225,8 +226,13 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         default:
           return false;
       }
-    } catch (error) {
-      console.error('[SubscriptionContext] Paywall error:', error);
+    } catch (error: any) {
+      const isCancelled =
+        error.userCancelled ||
+        error.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
+      if (!isCancelled) {
+        console.error('[SubscriptionContext] Paywall error:', error);
+      }
       return false;
     }
   }, [menuPicOffering, refreshProfile]);
@@ -249,7 +255,10 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       }
       return false;
     } catch (error: any) {
-      if (!error.userCancelled) {
+      const isCancelled =
+        error.userCancelled ||
+        error.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
+      if (!isCancelled) {
         Alert.alert('Purchase Error', error.message ?? 'Something went wrong.');
       }
       return false;
@@ -276,7 +285,10 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       }
       return false;
     } catch (error: any) {
-      if (!error.userCancelled) {
+      const isCancelled =
+        error.userCancelled ||
+        error.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
+      if (!isCancelled) {
         Alert.alert('Purchase Error', error.message ?? 'Something went wrong.');
       }
       return false;
