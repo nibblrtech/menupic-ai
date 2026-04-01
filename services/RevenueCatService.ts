@@ -50,13 +50,25 @@ export async function configureRevenueCat(): Promise<void> {
   if (_configured) return;
 
   if (__DEV__) {
-    // Custom log handler: suppress purchase-cancellation errors that the SDK
+    // Custom log handler: suppress known transient/benign errors that the SDK
     // logs at ERROR level (they trigger LogBox / red-bar in dev).
-    const cancelPattern = /cancel/i;
+    const suppressedErrorPatterns = [
+      /cancel/i,                    // User-initiated purchase cancellation
+      /currently being ingested/i,  // Transient 529 — SDK retries automatically
+      /offline/i,                   // Offline CustomerInfo computation fallback
+      /failedMovingNewFile/i,       // Internal SDK file-cleanup race condition
+      /paywall_event_store/i,       // SDK event store file already removed
+      /problem.+store/i,            // Transient App Store communication error — SDK retries
+      /validate the receipt/i,      // Receipt validation hiccup (common in sandbox)
+    ];
 
     const handler: LogHandler = (logLevel, message) => {
-      if (logLevel === LOG_LEVEL.ERROR && cancelPattern.test(message)) {
-        // Silently swallow cancellation errors
+      if (
+        logLevel === LOG_LEVEL.ERROR &&
+        suppressedErrorPatterns.some((p) => p.test(message))
+      ) {
+        // Downgrade to a regular log instead of red-bar error
+        console.log(`[RevenueCat] (suppressed error) ${message}`);
         return;
       }
 

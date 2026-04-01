@@ -4,6 +4,7 @@ import {
     Image,
     LayoutChangeEvent,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -11,6 +12,7 @@ import {
     View
 } from 'react-native';
 import { Button, Colors, Fonts, FontSize, Spacing } from '../constants/DesignSystem';
+import { useProfile } from '../contexts/ProfileContext';
 import { blackForestLabsService } from '../services/BlackForestLabsService';
 import { DishAnalysisResult, geminiService, TextBlock } from '../services/GeminiService';
 
@@ -29,6 +31,7 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
   status,
   setStatus
 }: Props, ref: any) {
+  const { decrementScan } = useProfile();
   const [result, setResult] = useState<DishAnalysisResult | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [viewLayout, setViewLayout] = useState({ width: 0, height: 0 });
@@ -119,6 +122,22 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
     }
   };
 
+  // Get the device's preferred locale for language-aware responses.
+  // Uses the standard Intl API available in modern React Native runtimes.
+  const deviceLocale = (() => {
+    try {
+      // Platform-specific: iOS / Android expose locales via Settings / NativeModules,
+      // but the Intl API is the most reliable cross-platform approach.
+      const locales =
+        Platform.OS === 'ios'
+          ? (Intl as any).DateTimeFormat().resolvedOptions().locale
+          : (Intl as any).DateTimeFormat().resolvedOptions().locale;
+      return locales || 'en-US';
+    } catch {
+      return 'en-US';
+    }
+  })();
+
   // Exposed identify function: accepts image-space coordinates (x,y)
   const identifyAtPoint = async (imgX: number, imgY: number) => {
     // imgX/imgY are expected to be window/view coordinates (same coordinate space as textBlocks)
@@ -157,7 +176,8 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
         data = await geminiService.identifyDish(
           imgX,
           imgY,
-          textBlocks
+          textBlocks,
+          deviceLocale
         );
       } catch (err: any) {
         console.error('[MenuInteractionOverlay] identifyDish Error:', err);
@@ -260,6 +280,10 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
 
       setResult({ ...data, generatedImage });
       setStatus('complete');
+
+      // A scan was successfully consumed — decrement the count optimistically
+      // on the client and persist to the DB in the background.
+      decrementScan();
     } catch (e) {
       console.error('[MenuInteractionOverlay] Outer identifyAtPoint catch:', e);
       const dq = detectQuotaError(e);
@@ -378,12 +402,6 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
                   
                   <Text style={styles.sectionHeader}>Description</Text>
                   <Text style={styles.bodyText}>{result.description}</Text>
-                  
-                  <View style={styles.debugSection}>
-                    <Text style={styles.promptDebug}>
-                       Prompt: "{result.imagePrompt}"
-                    </Text>
-                  </View>
                 </>
               )}
             </ScrollView>
@@ -578,18 +596,5 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: FontSize.small,
     opacity: 0.4,
-  },
-  debugSection: {
-    marginTop: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.dividerLight,
-    paddingTop: Spacing.xs,
-  },
-  promptDebug: {
-    fontSize: 10,
-    fontFamily: Fonts.regular,
-    color: Colors.textOnLight,
-    opacity: 0.3,
-    textAlign: 'center',
   },
 });

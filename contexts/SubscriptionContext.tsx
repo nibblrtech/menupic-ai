@@ -19,6 +19,7 @@ import React, {
     useContext,
     useEffect,
     useMemo,
+    useRef,
     useState,
     type PropsWithChildren,
 } from 'react';
@@ -48,6 +49,8 @@ interface SubscriptionState {
   willRenew: boolean;
   /** Human-readable expiration date of the current premium period, if any. */
   expirationDate: string | null;
+  /** Product identifier of the active subscription (e.g. MENUPICAIPREMIUM, MENUPICAIPREMIUMANNUAL), or null. */
+  activeProductId: string | null;
   /** RevenueCat offerings — used to display prices. */
   offerings: PurchasesOfferings | null;
   /** The specific MENUPICAIOFFERING offering object. */
@@ -78,6 +81,7 @@ const SubscriptionContext = createContext<SubscriptionState>({
   isPremium: false,
   willRenew: false,
   expirationDate: null,
+  activeProductId: null,
   offerings: null,
   menuPicOffering: null,
   premiumPackage: null,
@@ -95,20 +99,27 @@ const SubscriptionContext = createContext<SubscriptionState>({
 
 export function SubscriptionProvider({ children }: PropsWithChildren) {
   const { userId } = useAuth();
-  const { profile, refreshProfile } = useProfile();
+  const { profile, refreshProfile, setScans } = useProfile();
+
+  /** Number of scans credited per subscription period. */
+  const SCANS_PER_PERIOD = 30;
 
   const [isLoading, setIsLoading] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [willRenew, setWillRenew] = useState(false);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
+  const [activeProductId, setActiveProductId] = useState<string | null>(null);
   const [offerings, setOfferings] = useState<PurchasesOfferings | null>(null);
   const [menuPicOffering, setMenuPicOffering] = useState<PurchasesOffering | null>(null);
   const [premiumPackage, setPremiumPackage] = useState<PurchasesPackage | null>(null);
   const [annualPackage, setAnnualPackage] = useState<PurchasesPackage | null>(null);
 
   // ── Computed: does the user need the paywall? ──
-  const needsPaywall = useMemo(() => {
+  // Raw value recomputes on every state change; debounced below to prevent
+  // UI flashing when the SDK fires a burst of CustomerInfo updates
+  // (common in sandbox where expired renewals replay rapidly).
+  const rawNeedsPaywall = useMemo(() => {
     // Don't show paywall while loading
     if (isLoading) return false;
     // Show paywall if user has 0 scans AND no active subscription entitlement
@@ -116,13 +127,57 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     return hasNoScans && !isPremium;
   }, [isLoading, profile, isPremium]);
 
+  // Debounced version: hides immediately on purchase/restore but delays
+  // *showing* the paywall so rapid SDK event bursts don't cause flashing.
+  const [needsPaywall, setNeedsPaywall] = useState(false);
+  const paywallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Hide paywall immediately (user just purchased / restored)
+    if (!rawNeedsPaywall) {
+      if (paywallTimerRef.current) {
+        clearTimeout(paywallTimerRef.current);
+        paywallTimerRef.current = null;
+      }
+      setNeedsPaywall(false);
+      return;
+    }
+
+    // Show paywall only after a settling delay
+    if (paywallTimerRef.current) clearTimeout(paywallTimerRef.current);
+    paywallTimerRef.current = setTimeout(() => {
+      setNeedsPaywall(true);
+      paywallTimerRef.current = null;
+    }, 1500); // 1.5 s — enough for SDK event bursts to finish
+
+    return () => {
+      if (paywallTimerRef.current) {
+        clearTimeout(paywallTimerRef.current);
+        paywallTimerRef.current = null;
+      }
+    };
+  }, [rawNeedsPaywall]);
+
   // ── Helpers ──
 
   const processCustomerInfo = useCallback((info: CustomerInfo) => {
     const premium = info.entitlements.active[Entitlements.PREMIUM];
+
+    if (__DEV__) {
+      console.log('[SubscriptionContext] CustomerInfo update:', {
+        isPremium: !!premium,
+        willRenew: premium?.willRenew ?? false,
+        expirationDate: premium?.expirationDate ?? null,
+        isSandbox: (premium as any)?.isSandbox ?? null,
+        productId: premium?.productIdentifier ?? null,
+        allActiveEntitlements: Object.keys(info.entitlements.active),
+      });
+    }
+
     setIsPremium(!!premium);
     setWillRenew(premium?.willRenew ?? false);
     setExpirationDate(premium?.expirationDate ?? null);
+    setActiveProductId(premium?.productIdentifier ?? null);
   }, []);
 
   const loadOfferings = useCallback(async () => {
@@ -163,8 +218,17 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
           await identifyUser(userId);
         }
 
+        // Invalidate the SDK cache so we fetch fresh data from the server
+        // instead of replaying stale sandbox renewal/expiration events.
+        await Purchases.invalidateCustomerInfoCache();
+
         const info = await Purchases.getCustomerInfo();
-        if (!cancelled) processCustomerInfo(info);
+        if (!cancelled) {
+          processCustomerInfo(info);
+          if (__DEV__) {
+            console.log('[SubscriptionContext] Init complete — customer info loaded');
+          }
+        }
 
         await loadOfferings();
       } catch (err) {
@@ -197,6 +261,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       setIsPremium(false);
       setWillRenew(false);
       setExpirationDate(null);
+      setActiveProductId(null);
     }
   }, [userId]);
 
@@ -216,6 +281,12 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
       switch (result) {
         case PAYWALL_RESULT.PURCHASED:
+          // Refresh profile first (picks up any server-side changes), then
+          // optimistically credit scans so the value isn't overwritten by a
+          // stale server response (webhook may not have been processed yet).
+          await refreshProfile();
+          setScans(SCANS_PER_PERIOD);
+          return true;
         case PAYWALL_RESULT.RESTORED:
           // Refresh profile to pick up scans credited by webhook
           await refreshProfile();
@@ -250,7 +321,11 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       processCustomerInfo(customerInfo);
 
       if (customerInfo.entitlements.active[Entitlements.PREMIUM]) {
+        // Refresh profile first (picks up any server-side changes), then
+        // optimistically credit scans so the value isn't overwritten by a
+        // stale server response (webhook may not have been processed yet).
         await refreshProfile();
+        setScans(SCANS_PER_PERIOD);
         return true;
       }
       return false;
@@ -280,7 +355,11 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       processCustomerInfo(customerInfo);
 
       if (customerInfo.entitlements.active[Entitlements.PREMIUM]) {
+        // Refresh profile first (picks up any server-side changes), then
+        // optimistically credit scans so the value isn't overwritten by a
+        // stale server response (webhook may not have been processed yet).
         await refreshProfile();
+        setScans(SCANS_PER_PERIOD);
         return true;
       }
       return false;
@@ -311,7 +390,10 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
           ? 'Your purchases have been restored.'
           : 'No active subscriptions found to restore.',
       );
-      if (restored) await refreshProfile();
+      if (restored) {
+        await refreshProfile();
+        setScans(SCANS_PER_PERIOD);
+      }
     } catch (error: any) {
       Alert.alert('Restore Error', error.message ?? 'Something went wrong.');
     } finally {
@@ -356,6 +438,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         isPremium,
         willRenew,
         expirationDate,
+        activeProductId,
         offerings,
         menuPicOffering,
         premiumPackage,

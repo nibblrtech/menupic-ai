@@ -103,3 +103,10 @@ The original Gradle error was because you don't have the Android SDK installed l
 
 Supabase: see `SECRETS.local.md` (not committed to git)
 
+
+
+
+===================================================
+===================================================
+express results in user's native language
+

@@ -47,16 +47,22 @@ class GeminiService {
   async identifyDish(
     clickX: number, 
     clickY: number, 
-    blocks: TextBlock[]
+    blocks: TextBlock[],
+    locale?: string
   ): Promise<DishAnalysisResult | null> {
     const start = Date.now();
-    logger.log(`identifyDish started at (${clickX}, ${clickY})`);
+    logger.log(`identifyDish started at (${clickX}, ${clickY}) locale=${locale}`);
     
     await this.initialize();
 
     // Filter blocks to reduce token usage (simple heuristic: closer blocks first)
     // You might want to sort these blocks by distance to clickX/Y before sending.
     const relevantBlocks = blocks.slice(0, 50); 
+
+    // Determine the language the user expects results in
+    const languageInstruction = locale
+      ? `IMPORTANT: The user's device locale is "${locale}". You MUST write ALL text fields (dishName, description, imagePrompt) in the language corresponding to that locale. For example, if the locale is "en-US", respond in US English. If it is "fr-FR", respond entirely in French. Translate dish names, descriptions, and all other text into this language regardless of the menu's original language.`
+      : '';
 
     const prompt = `
       You are an AI assistant for a food menu app.
@@ -68,11 +74,18 @@ class GeminiService {
       Look at the 'frame' coordinates. Text on the same Y-axis is likely the same line. 
       Titles are often above descriptions. Prices are often to the right.
 
+      ${languageInstruction}
+
       DATA:
       ${JSON.stringify(relevantBlocks)}
 
       TASK:
-      1. Assemble the Dish Name, Description
+      1. Assemble the Dish Name.
+      2. Write a rich, engaging description (3-5 sentences) that includes:
+         - What the dish is and how it is typically prepared.
+         - A brief history or origin story of the dish.
+         - Any local traditions, regional variations, or colorful cultural details.
+         - Flavor profile or what makes this dish special.
       3. Generate a descriptive prompt for an AI image generator to visualize this specific food.
 
       RETURN JSON ONLY (No Markdown):

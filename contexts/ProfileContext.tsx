@@ -18,6 +18,10 @@ interface ProfileState {
   error: string | null;
   /** Manually re-fetch the profile from the server (e.g. after a scan is consumed). */
   refreshProfile: () => Promise<void>;
+  /** Optimistically decrement the scan count by 1 on the client and persist via API. */
+  decrementScan: () => void;
+  /** Optimistically set the scan count on the client (e.g. after purchase). */
+  setScans: (count: number) => void;
 }
 
 const ProfileContext = createContext<ProfileState>({
@@ -25,6 +29,8 @@ const ProfileContext = createContext<ProfileState>({
   isLoading: false,
   error: null,
   refreshProfile: async () => {},
+  decrementScan: () => {},
+  setScans: () => {},
 });
 
 export function ProfileProvider({ children }: PropsWithChildren) {
@@ -72,8 +78,59 @@ export function ProfileProvider({ children }: PropsWithChildren) {
     }
   }, [userId, fetchProfile]);
 
+  /**
+   * Optimistically set the local scan count (e.g. after a purchase grants 30 scans).
+   * This updates the client UI immediately without waiting for a server round-trip.
+   */
+  const setScans = useCallback((count: number) => {
+    setProfile(prev => {
+      if (!prev) return prev;
+      return new UserProfile(
+        prev.userId,
+        prev.createdAt,
+        prev.updatedAt,
+        count,
+        prev.subscriptionProductId,
+        prev.subscriptionStartedAt,
+        prev.lastScanCreditAt,
+        prev.subscriptionActive,
+      );
+    });
+  }, []);
+
+  /**
+   * Optimistically decrement the scan count by 1 on the client, then persist
+   * the change via the /api/consume-scan endpoint in the background.
+   */
+  const decrementScan = useCallback(() => {
+    setProfile(prev => {
+      if (!prev || prev.scans <= 0) return prev;
+      return new UserProfile(
+        prev.userId,
+        prev.createdAt,
+        prev.updatedAt,
+        prev.scans - 1,
+        prev.subscriptionProductId,
+        prev.subscriptionStartedAt,
+        prev.lastScanCreditAt,
+        prev.subscriptionActive,
+      );
+    });
+
+    // Fire-and-forget: persist the decrement on the server
+    if (userId) {
+      fetch('/api/consume-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId }),
+      }).catch(err => {
+        console.warn('[ProfileContext] Failed to persist scan decrement:', err);
+      });
+    }
+  }, [userId]);
+
   return (
-    <ProfileContext.Provider value={{ profile, isLoading, error, refreshProfile }}>
+    <ProfileContext.Provider value={{ profile, isLoading, error, refreshProfile, decrementScan, setScans }}>
       {children}
     </ProfileContext.Provider>
   );

@@ -313,10 +313,11 @@ export default function ScanScreen() {
   // ── Paywall gate ──
   const {
     needsPaywall,
+    isPremium,
     isLoading: subLoading,
     menuPicOffering,
   } = useSubscription();
-  const { refreshProfile, isLoading: profileLoading } = useProfile();
+  const { profile, refreshProfile, isLoading: profileLoading, setScans } = useProfile();
 
   // All hooks must be called unconditionally (Rules of Hooks)
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
@@ -421,6 +422,54 @@ export default function ScanScreen() {
     setCameraLayout({ width, height });
   };
 
+  // ── Zero-scans server verification ──
+  // When a premium user's scan count drops to 0 *after having had scans*
+  // (i.e. after a scan was consumed), verify with the server before blocking.
+  // The webhook may have already credited new scans.
+  const [zeroScansVerified, setZeroScansVerified] = useState(false);
+  const [isVerifyingScans, setIsVerifyingScans] = useState(false);
+  const prevScansRef = useRef<number | null>(null);
+
+  // Track whether scans *dropped* to 0 from a positive value (consumed a scan).
+  // This avoids triggering the check when the profile initially loads with 0
+  // or immediately after a purchase sets scans to 30.
+  const scansDroppedToZero =
+    prevScansRef.current !== null &&
+    prevScansRef.current > 0 &&
+    profile !== null &&
+    profile.scans <= 0;
+
+  // Keep prevScansRef in sync — update *after* the derived flag is computed.
+  useEffect(() => {
+    if (profile) {
+      prevScansRef.current = profile.scans;
+    }
+  }, [profile?.scans]);
+
+  // Reset the verified flag whenever scans become positive again
+  useEffect(() => {
+    if (profile && profile.scans > 0 && zeroScansVerified) {
+      setZeroScansVerified(false);
+    }
+  }, [profile?.scans, zeroScansVerified]);
+
+  // Kick off a server check only when scans dropped to 0 via consumption
+  useEffect(() => {
+    if (!isPremium || !scansDroppedToZero || zeroScansVerified || isVerifyingScans) return;
+
+    let cancelled = false;
+    setIsVerifyingScans(true);
+
+    refreshProfile().finally(() => {
+      if (!cancelled) {
+        setIsVerifyingScans(false);
+        setZeroScansVerified(true);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [isPremium, scansDroppedToZero, zeroScansVerified, isVerifyingScans, refreshProfile]);
+
   // ── Early returns (AFTER all hooks) ──
 
   // Show a loading indicator while subscription/profile data is loading
@@ -446,13 +495,48 @@ export default function ScanScreen() {
             displayCloseButton: false,
           }}
           onPurchaseCompleted={() => {
-            // Refresh profile to pick up scans credited by webhook
-            refreshProfile();
+            // Optimistically credit 30 scans so the user can scan right away.
+            // Don't call refreshProfile() here — the webhook hasn't fired yet
+            // so the server still has 0, which would overwrite the 30.
+            setScans(30);
           }}
           onRestoreCompleted={() => {
             refreshProfile();
           }}
         />
+      </View>
+    );
+  }
+
+  // Premium user with 0 scans — verify with server before blocking.
+  // The webhook may have credited new scans that the client doesn't know about.
+  if (isPremium && profile && profile.scans <= 0) {
+    // Scans dropped to 0 via consumption — verify with the server first
+    if (scansDroppedToZero && (isVerifyingScans || !zeroScansVerified)) {
+      return (
+        <View style={styles.container}>
+          <StatusBar style="light" />
+          <View style={styles.permissionContainer}>
+            <ActivityIndicator size="large" color={Colors.textOnDark} />
+            <Text style={[styles.permissionMessage, { marginTop: Spacing.sm }]}>
+              Checking scan credits…
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    // Server confirmed 0 scans — show the info message
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.permissionContainer}>
+          <Text style={styles.permissionTitle}>Out of Scans</Text>
+          <Text style={styles.permissionMessage}>
+            You've used all your scans for this period.{"\n"}
+            Your credits will refresh at the start of your next billing cycle.
+          </Text>
+        </View>
       </View>
     );
   }
