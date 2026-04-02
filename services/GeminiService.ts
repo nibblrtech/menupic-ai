@@ -19,11 +19,26 @@ export interface TextBlock {
   frame: { x: number; y: number; width: number; height: number };
 }
 
+export interface NutritionFacts {
+  servingSize: string;
+  calories: number;
+  totalFat: { grams: number; dailyValue: number };
+  saturatedFat: { grams: number; dailyValue: number };
+  transFat: { grams: number };
+  cholesterol: { mg: number; dailyValue: number };
+  sodium: { mg: number; dailyValue: number };
+  totalCarbohydrates: { grams: number; dailyValue: number };
+  dietaryFiber: { grams: number; dailyValue: number };
+  totalSugars: { grams: number };
+  addedSugars: { grams: number; dailyValue: number };
+  protein: { grams: number; dailyValue: number };
+  vitaminsAndMinerals: Array<{ name: string; dailyValue: number }>;
+}
+
 export interface DishAnalysisResult {
   dishName: string;
   description: string;
-  price: string;
-  nutrients: string;
+  nutrition: NutritionFacts;
   imagePrompt: string;
   generatedImage?: string;
 }
@@ -86,12 +101,40 @@ class GeminiService {
          - A brief history or origin story of the dish.
          - Any local traditions, regional variations, or colorful cultural details.
          - Flavor profile or what makes this dish special.
-      3. Generate a descriptive prompt for an AI image generator to visualize this specific food.
+      3. Provide ESTIMATED nutrition facts for a single typical serving of this dish.
+         These are estimates — do your best based on common recipes and portion sizes.
+         Include: serving size, calories, total fat (g & %DV), saturated fat (g & %DV),
+         trans fat (g), cholesterol (mg & %DV), sodium (mg & %DV),
+         total carbohydrates (g & %DV), dietary fiber (g & %DV),
+         total sugars (g), added sugars (g & %DV), protein (g & %DV),
+         and any pertinent vitamins & minerals with their %DV.
+         %DV = percent daily value based on a 2,000 calorie diet.
+      4. Generate a descriptive prompt for an AI image generator to visualize this specific food.
 
       RETURN JSON ONLY (No Markdown):
       {
         "dishName": "String",
         "description": "String",
+        "nutrition": {
+          "servingSize": "e.g. 1 plate (350g)",
+          "calories": 550,
+          "totalFat": { "grams": 22, "dailyValue": 28 },
+          "saturatedFat": { "grams": 8, "dailyValue": 40 },
+          "transFat": { "grams": 0 },
+          "cholesterol": { "mg": 85, "dailyValue": 28 },
+          "sodium": { "mg": 900, "dailyValue": 39 },
+          "totalCarbohydrates": { "grams": 55, "dailyValue": 20 },
+          "dietaryFiber": { "grams": 4, "dailyValue": 14 },
+          "totalSugars": { "grams": 8 },
+          "addedSugars": { "grams": 2, "dailyValue": 4 },
+          "protein": { "grams": 30, "dailyValue": 60 },
+          "vitaminsAndMinerals": [
+            { "name": "Vitamin D", "dailyValue": 6 },
+            { "name": "Calcium", "dailyValue": 15 },
+            { "name": "Iron", "dailyValue": 20 },
+            { "name": "Potassium", "dailyValue": 10 }
+          ]
+        },
         "imagePrompt": "String"
       }
     `;

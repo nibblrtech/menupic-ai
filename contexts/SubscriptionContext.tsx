@@ -99,7 +99,7 @@ const SubscriptionContext = createContext<SubscriptionState>({
 
 export function SubscriptionProvider({ children }: PropsWithChildren) {
   const { userId } = useAuth();
-  const { profile, refreshProfile, setScans } = useProfile();
+  const { profile, setScans } = useProfile();
 
   /** Number of scans credited per subscription period. */
   const SCANS_PER_PERIOD = 30;
@@ -114,6 +114,25 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
   const [menuPicOffering, setMenuPicOffering] = useState<PurchasesOffering | null>(null);
   const [premiumPackage, setPremiumPackage] = useState<PurchasesPackage | null>(null);
   const [annualPackage, setAnnualPackage] = useState<PurchasesPackage | null>(null);
+
+  // ── Auto-credit scans when isPremium transitions false → true ──
+  // This is the primary mechanism for granting 30 scans on purchase.
+  // It fires reliably regardless of which purchase path was used
+  // (purchasePremium, purchaseAnnual, presentPaywall, inline Paywall)
+  // because RevenueCat's CustomerInfo listener always updates isPremium.
+  const wasPremiumRef = useRef(isPremium);
+  useEffect(() => {
+    const wasPremium = wasPremiumRef.current;
+    wasPremiumRef.current = isPremium;
+
+    if (!wasPremium && isPremium) {
+      // User just became premium — credit 30 scans immediately.
+      if (__DEV__) {
+        console.log('[SubscriptionContext] isPremium false→true — crediting', SCANS_PER_PERIOD, 'scans');
+      }
+      setScans(SCANS_PER_PERIOD);
+    }
+  }, [isPremium, setScans, SCANS_PER_PERIOD]);
 
   // ── Computed: does the user need the paywall? ──
   // Raw value recomputes on every state change; debounced below to prevent
@@ -281,15 +300,13 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
       switch (result) {
         case PAYWALL_RESULT.PURCHASED:
-          // Refresh profile first (picks up any server-side changes), then
-          // optimistically credit scans so the value isn't overwritten by a
-          // stale server response (webhook may not have been processed yet).
-          await refreshProfile();
+          // The isPremium transition detector already credited 30 scans.
+          // Set again as a safety net (setScans is idempotent for same value).
           setScans(SCANS_PER_PERIOD);
           return true;
         case PAYWALL_RESULT.RESTORED:
-          // Refresh profile to pick up scans credited by webhook
-          await refreshProfile();
+          // The isPremium transition detector already credited 30 scans.
+          setScans(SCANS_PER_PERIOD);
           return true;
         case PAYWALL_RESULT.CANCELLED:
         case PAYWALL_RESULT.NOT_PRESENTED:
@@ -306,7 +323,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       }
       return false;
     }
-  }, [menuPicOffering, refreshProfile]);
+  }, [menuPicOffering, setScans, SCANS_PER_PERIOD]);
 
   // ── Purchase: Premium Monthly ──
 
@@ -321,10 +338,8 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       processCustomerInfo(customerInfo);
 
       if (customerInfo.entitlements.active[Entitlements.PREMIUM]) {
-        // Refresh profile first (picks up any server-side changes), then
-        // optimistically credit scans so the value isn't overwritten by a
-        // stale server response (webhook may not have been processed yet).
-        await refreshProfile();
+        // The isPremium transition detector already credited 30 scans.
+        // Set again as a safety net.
         setScans(SCANS_PER_PERIOD);
         return true;
       }
@@ -340,7 +355,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     } finally {
       setIsPurchasing(false);
     }
-  }, [premiumPackage, processCustomerInfo, refreshProfile]);
+  }, [premiumPackage, processCustomerInfo, setScans, SCANS_PER_PERIOD]);
 
   // ── Purchase: Premium Annual ──
 
@@ -355,10 +370,8 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       processCustomerInfo(customerInfo);
 
       if (customerInfo.entitlements.active[Entitlements.PREMIUM]) {
-        // Refresh profile first (picks up any server-side changes), then
-        // optimistically credit scans so the value isn't overwritten by a
-        // stale server response (webhook may not have been processed yet).
-        await refreshProfile();
+        // The isPremium transition detector already credited 30 scans.
+        // Set again as a safety net.
         setScans(SCANS_PER_PERIOD);
         return true;
       }
@@ -374,7 +387,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     } finally {
       setIsPurchasing(false);
     }
-  }, [annualPackage, processCustomerInfo, refreshProfile]);
+  }, [annualPackage, processCustomerInfo, setScans, SCANS_PER_PERIOD]);
 
   // ── Restore ──
 
@@ -391,7 +404,8 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
           : 'No active subscriptions found to restore.',
       );
       if (restored) {
-        await refreshProfile();
+        // The isPremium transition detector already credited 30 scans.
+        // Set again as a safety net.
         setScans(SCANS_PER_PERIOD);
       }
     } catch (error: any) {
@@ -399,7 +413,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     } finally {
       setIsPurchasing(false);
     }
-  }, [processCustomerInfo, refreshProfile]);
+  }, [processCustomerInfo, setScans, SCANS_PER_PERIOD]);
 
   // ── Manage (cancel) ──
 

@@ -14,7 +14,248 @@ import {
 import { Button, Colors, Fonts, FontSize, Spacing } from '../constants/DesignSystem';
 import { useProfile } from '../contexts/ProfileContext';
 import { blackForestLabsService } from '../services/BlackForestLabsService';
-import { DishAnalysisResult, geminiService, TextBlock } from '../services/GeminiService';
+import { DishAnalysisResult, geminiService, NutritionFacts, TextBlock } from '../services/GeminiService';
+
+// ─── FDA-style Nutrition Facts Label ─────────────────────────────────────────
+
+function NutritionLabel({ nutrition }: { nutrition: NutritionFacts }) {
+  const n = nutrition;
+  return (
+    <View style={nfStyles.container}>
+      <Text style={nfStyles.title}>Nutrition Facts</Text>
+      <View style={nfStyles.thickRule} />
+
+      <View style={nfStyles.servingRow}>
+        <Text style={nfStyles.servingText}>Serving size</Text>
+        <Text style={nfStyles.servingText}>{n.servingSize || '1 serving'}</Text>
+      </View>
+      <View style={nfStyles.thickRule} />
+
+      {/* Calories */}
+      <View style={nfStyles.calorieRow}>
+        <Text style={nfStyles.calorieLabel}>Calories</Text>
+        <Text style={nfStyles.calorieValue}>{n.calories ?? '—'}</Text>
+      </View>
+      <View style={nfStyles.mediumRule} />
+
+      <View style={nfStyles.dvHeaderRow}>
+        <Text style={nfStyles.dvHeaderText}>% Daily Value*</Text>
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Total Fat */}
+      <View style={nfStyles.row}>
+        <Text style={nfStyles.boldLabel}>Total Fat </Text>
+        <Text style={nfStyles.label}>{n.totalFat?.grams ?? 0}g</Text>
+        <Text style={nfStyles.dvValue}>{n.totalFat?.dailyValue ?? 0}%</Text>
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Saturated Fat */}
+      <View style={nfStyles.indentedRow}>
+        <Text style={nfStyles.label}>Saturated Fat {n.saturatedFat?.grams ?? 0}g</Text>
+        <Text style={nfStyles.dvValue}>{n.saturatedFat?.dailyValue ?? 0}%</Text>
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Trans Fat */}
+      <View style={nfStyles.indentedRow}>
+        <Text style={nfStyles.italicLabel}>Trans Fat {n.transFat?.grams ?? 0}g</Text>
+        <View />
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Cholesterol */}
+      <View style={nfStyles.row}>
+        <Text style={nfStyles.boldLabel}>Cholesterol </Text>
+        <Text style={nfStyles.label}>{n.cholesterol?.mg ?? 0}mg</Text>
+        <Text style={nfStyles.dvValue}>{n.cholesterol?.dailyValue ?? 0}%</Text>
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Sodium */}
+      <View style={nfStyles.row}>
+        <Text style={nfStyles.boldLabel}>Sodium </Text>
+        <Text style={nfStyles.label}>{n.sodium?.mg ?? 0}mg</Text>
+        <Text style={nfStyles.dvValue}>{n.sodium?.dailyValue ?? 0}%</Text>
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Total Carbohydrates */}
+      <View style={nfStyles.row}>
+        <Text style={nfStyles.boldLabel}>Total Carbohydrate </Text>
+        <Text style={nfStyles.label}>{n.totalCarbohydrates?.grams ?? 0}g</Text>
+        <Text style={nfStyles.dvValue}>{n.totalCarbohydrates?.dailyValue ?? 0}%</Text>
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Dietary Fiber */}
+      <View style={nfStyles.indentedRow}>
+        <Text style={nfStyles.label}>Dietary Fiber {n.dietaryFiber?.grams ?? 0}g</Text>
+        <Text style={nfStyles.dvValue}>{n.dietaryFiber?.dailyValue ?? 0}%</Text>
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Total Sugars */}
+      <View style={nfStyles.indentedRow}>
+        <Text style={nfStyles.label}>Total Sugars {n.totalSugars?.grams ?? 0}g</Text>
+        <View />
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Added Sugars */}
+      <View style={nfStyles.doubleIndentedRow}>
+        <Text style={nfStyles.label}>Includes {n.addedSugars?.grams ?? 0}g Added Sugars</Text>
+        <Text style={nfStyles.dvValue}>{n.addedSugars?.dailyValue ?? 0}%</Text>
+      </View>
+      <View style={nfStyles.thinRule} />
+
+      {/* Protein */}
+      <View style={nfStyles.row}>
+        <Text style={nfStyles.boldLabel}>Protein </Text>
+        <Text style={nfStyles.label}>{n.protein?.grams ?? 0}g</Text>
+        <Text style={nfStyles.dvValue}>{n.protein?.dailyValue ?? 0}%</Text>
+      </View>
+      <View style={nfStyles.thickRule} />
+
+      {/* Vitamins & Minerals */}
+      {(n.vitaminsAndMinerals ?? []).map((vm, i) => (
+        <React.Fragment key={i}>
+          <View style={nfStyles.row}>
+            <Text style={nfStyles.label}>{vm.name}</Text>
+            <Text style={nfStyles.dvValue}>{vm.dailyValue}%</Text>
+          </View>
+          {i < (n.vitaminsAndMinerals?.length ?? 0) - 1 && <View style={nfStyles.thinRule} />}
+        </React.Fragment>
+      ))}
+      {(n.vitaminsAndMinerals?.length ?? 0) > 0 && <View style={nfStyles.mediumRule} />}
+
+      <Text style={nfStyles.footnote}>
+        * Percent Daily Values are based on a 2,000 calorie diet.{'\n'}
+        Values are estimated and may vary based on preparation.
+      </Text>
+    </View>
+  );
+}
+
+const nfStyles = StyleSheet.create({
+  container: {
+    borderWidth: 2,
+    borderColor: '#000',
+    padding: 8,
+    marginTop: 4,
+    marginBottom: 12,
+    backgroundColor: '#fff',
+  },
+  title: {
+    fontSize: 22,
+    fontFamily: 'Play-Bold',
+    color: '#000',
+    letterSpacing: 0.5,
+  },
+  thickRule: {
+    height: 8,
+    backgroundColor: '#000',
+    marginVertical: 2,
+  },
+  mediumRule: {
+    height: 4,
+    backgroundColor: '#000',
+    marginVertical: 1,
+  },
+  thinRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#000',
+    marginVertical: 1,
+  },
+  servingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  servingText: {
+    fontSize: 13,
+    fontFamily: 'Play-Bold',
+    color: '#000',
+  },
+  calorieRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingVertical: 2,
+  },
+  calorieLabel: {
+    fontSize: 16,
+    fontFamily: 'Play-Bold',
+    color: '#000',
+  },
+  calorieValue: {
+    fontSize: 22,
+    fontFamily: 'Play-Bold',
+    color: '#000',
+  },
+  dvHeaderRow: {
+    alignItems: 'flex-end',
+    paddingVertical: 1,
+  },
+  dvHeaderText: {
+    fontSize: 11,
+    fontFamily: 'Play-Bold',
+    color: '#000',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  indentedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+    paddingLeft: 16,
+  },
+  doubleIndentedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+    paddingLeft: 32,
+  },
+  boldLabel: {
+    fontSize: 13,
+    fontFamily: 'Play-Bold',
+    color: '#000',
+  },
+  label: {
+    fontSize: 13,
+    fontFamily: 'Play-Regular',
+    color: '#000',
+    flex: 1,
+  },
+  italicLabel: {
+    fontSize: 13,
+    fontFamily: 'Play-Regular',
+    fontStyle: 'italic',
+    color: '#000',
+    flex: 1,
+  },
+  dvValue: {
+    fontSize: 13,
+    fontFamily: 'Play-Bold',
+    color: '#000',
+    textAlign: 'right',
+    minWidth: 36,
+  },
+  footnote: {
+    fontSize: 10,
+    fontFamily: 'Play-Regular',
+    color: '#333',
+    marginTop: 4,
+    lineHeight: 14,
+  },
+});
 
 interface Props {
   textBlocks: TextBlock[];
@@ -399,7 +640,10 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
 
                   <Text style={styles.dishTitle}>{result.dishName}</Text>
                   <View style={styles.divider} />
-                  
+
+                  {/* ─── Nutrition Facts Label ─── */}
+                  {result.nutrition && <NutritionLabel nutrition={result.nutrition} />}
+
                   <Text style={styles.sectionHeader}>Description</Text>
                   <Text style={styles.bodyText}>{result.description}</Text>
                 </>

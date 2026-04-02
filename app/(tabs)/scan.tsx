@@ -495,13 +495,16 @@ export default function ScanScreen() {
             displayCloseButton: false,
           }}
           onPurchaseCompleted={() => {
-            // Optimistically credit 30 scans so the user can scan right away.
-            // Don't call refreshProfile() here — the webhook hasn't fired yet
-            // so the server still has 0, which would overwrite the 30.
+            // The isPremium transition detector in SubscriptionContext
+            // already credited 30 scans. Set again as safety net.
+            // Note: this callback may not fire if the Paywall component
+            // unmounts first (RevenueCat listener updates isPremium and
+            // needsPaywall goes false before the callback runs).
             setScans(30);
           }}
           onRestoreCompleted={() => {
-            refreshProfile();
+            // Transition detector handles crediting scans.
+            setScans(30);
           }}
         />
       </View>

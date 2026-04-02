@@ -3,6 +3,7 @@ import React, {
     useCallback,
     useContext,
     useEffect,
+    useRef,
     useState,
     type PropsWithChildren,
 } from 'react';
@@ -40,6 +41,11 @@ export function ProfileProvider({ children }: PropsWithChildren) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // When true, refreshProfile() becomes a no-op. This prevents any server
+  // fetch from overwriting the optimistic 30 scans granted after purchase.
+  // Cleared on the first decrementScan() (i.e. user actually scans a dish).
+  const justSubscribedRef = useRef(false);
+
   const fetchProfile = useCallback(async (uid: string) => {
     setIsLoading(true);
     setError(null);
@@ -73,6 +79,13 @@ export function ProfileProvider({ children }: PropsWithChildren) {
   }, [userId, fetchProfile]);
 
   const refreshProfile = useCallback(async () => {
+    if (justSubscribedRef.current) {
+      // Skip server fetch — the user just subscribed and we don't want
+      // a stale server response (webhook not yet processed) to overwrite
+      // the optimistic 30 scans.
+      if (__DEV__) console.log('[ProfileContext] refreshProfile skipped — justSubscribed is true');
+      return;
+    }
     if (userId) {
       await fetchProfile(userId);
     }
@@ -81,8 +94,11 @@ export function ProfileProvider({ children }: PropsWithChildren) {
   /**
    * Optimistically set the local scan count (e.g. after a purchase grants 30 scans).
    * This updates the client UI immediately without waiting for a server round-trip.
+   * Also sets the justSubscribed guard so refreshProfile won't overwrite this value.
    */
   const setScans = useCallback((count: number) => {
+    justSubscribedRef.current = true;
+    if (__DEV__) console.log(`[ProfileContext] setScans(${count}) — justSubscribed guard ON`);
     setProfile(prev => {
       if (!prev) return prev;
       return new UserProfile(
@@ -103,6 +119,12 @@ export function ProfileProvider({ children }: PropsWithChildren) {
    * the change via the /api/consume-scan endpoint in the background.
    */
   const decrementScan = useCallback(() => {
+    // The user is actively scanning — clear the guard so future
+    // refreshProfile calls work normally (e.g. zero-scans verification).
+    if (justSubscribedRef.current) {
+      justSubscribedRef.current = false;
+      if (__DEV__) console.log('[ProfileContext] decrementScan — justSubscribed guard OFF');
+    }
     setProfile(prev => {
       if (!prev || prev.scans <= 0) return prev;
       return new UserProfile(

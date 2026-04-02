@@ -105,8 +105,3 @@ Supabase: see `SECRETS.local.md` (not committed to git)
 
 
 
-
-===================================================
-===================================================
-express results in user's native language
-
