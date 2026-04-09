@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import TextRecognition, {
     TextBlock,
     TextRecognitionResult,
@@ -14,6 +15,7 @@ import {
     useCameraDevice,
     useCameraPermission,
 } from "react-native-vision-camera";
+import FreezeZoomOverlay from "../../components/FreezeZoomOverlay";
 import { MenuInteractionOverlay } from "../../components/MenuInteractionOverlay";
 import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../../constants/DesignSystem";
 import { useProfile } from "../../contexts/ProfileContext";
@@ -327,6 +329,12 @@ export default function ScanScreen() {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
 
+  // ── Freeze-zoom state ──────────────────────────────────────────────────────
+  const [isFrozen, setIsFrozen] = useState(false);
+  const [frozenPhotoUri, setFrozenPhotoUri] = useState<string | null>(null);
+  const [frozenBoxes, setFrozenBoxes] = useState<BoundingBox[]>([]);
+  const isFreezing = useRef(false);
+
   // Pause camera when app is backgrounded
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -341,9 +349,11 @@ export default function ScanScreen() {
   const cameraLayoutRef = useRef(cameraLayout);
   const statusRef = useRef(status);
   const cancelledRef = useRef(false);
+  const isFrozenRef = useRef(isFrozen);
 
   useEffect(() => { cameraLayoutRef.current = cameraLayout; }, [cameraLayout]);
   useEffect(() => { statusRef.current = status; }, [status]);
+  useEffect(() => { isFrozenRef.current = isFrozen; }, [isFrozen]);
 
   useEffect(() => {
     if (!hasPermission || !device || !isCameraReady || !isActive) return;
@@ -358,6 +368,12 @@ export default function ScanScreen() {
     const runOnce = async () => {
       if (cancelledRef.current) return;
       const layout = cameraLayoutRef.current;
+
+      // Skip while frozen — no need to keep taking photos
+      if (isFrozenRef.current) {
+        scheduleNext();
+        return;
+      }
 
       if (!cameraRef.current || layout.width === 0 || statusRef.current !== 'idle') {
         scheduleNext();
@@ -420,6 +436,84 @@ export default function ScanScreen() {
   const onCameraLayout = (event: any) => {
     const { width, height } = event.nativeEvent.layout;
     setCameraLayout({ width, height });
+  };
+
+  // ── Freeze / unfreeze helpers ─────────────────────────────────────────────
+  const handleFreezeToggle = async () => {
+    if (isFrozen) {
+      // Return to live view
+      setIsFrozen(false);
+      setFrozenPhotoUri(null);
+      setFrozenBoxes([]);
+      isFreezing.current = false;
+      return;
+    }
+
+    if (isFreezing.current || !cameraRef.current) return;
+    isFreezing.current = true;
+
+    try {
+      const photo = Platform.OS === 'android'
+        ? await cameraRef.current.takeSnapshot({ quality: 85 })
+        : await cameraRef.current.takePhoto({ flash: 'off', enableShutterSound: false });
+
+      const layout = cameraLayoutRef.current;
+
+      // Show the frozen image immediately with the current block-level boxes
+      // as a placeholder so the user sees something right away.
+      setFrozenBoxes([...boundingBoxes]);
+      setFrozenPhotoUri(`file://${photo.path}`);
+      setIsFrozen(true);
+
+      // Re-run OCR on the ENTIRE frozen photo to get finer, line-level boxes.
+      // Using lines instead of blocks gives much better granularity when the
+      // user zooms in — what was one merged paragraph block becomes individual
+      // selectable lines.
+      try {
+        const ocrResult: TextRecognitionResult = await TextRecognition.recognize(
+          `file://${photo.path}`
+        );
+
+        const lineBoxes: BoundingBox[] = [];
+        ocrResult.blocks.forEach((block: TextBlock) => {
+          // Try line-level first for finer granularity
+          const lines: any[] = (block as any).lines ?? [];
+          if (lines.length > 0) {
+            lines.forEach((line: any) => {
+              if (line.frame != null) {
+                const transformed = transformCoordinates(
+                  { left: line.frame.left, top: line.frame.top, width: line.frame.width, height: line.frame.height },
+                  photo,
+                  layout.width,
+                  layout.height,
+                  false
+                );
+                lineBoxes.push({ ...transformed, text: line.text });
+              }
+            });
+          } else if (block.frame != null) {
+            // Fallback to block-level if no lines are available
+            const transformed = transformCoordinates(
+              { left: block.frame.left, top: block.frame.top, width: block.frame.width, height: block.frame.height },
+              photo,
+              layout.width,
+              layout.height,
+              false
+            );
+            lineBoxes.push({ ...transformed, text: block.text });
+          }
+        });
+
+        // Replace the block-level placeholder with the fine-grained line-level boxes
+        setFrozenBoxes(lineBoxes);
+      } catch (ocrErr) {
+        // OCR failed after freeze — keep the block-level placeholder boxes
+        console.log('[FreezeZoom] Line-level OCR error (keeping block-level fallback):', ocrErr);
+      }
+    } catch (e) {
+      console.log('[FreezeZoom] Capture error:', e);
+      isFreezing.current = false;
+    }
   };
 
   // ── Zero-scans server verification ──
@@ -592,10 +686,34 @@ export default function ScanScreen() {
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <Text style={styles.headerText}>MenuPic AI</Text>
         <Text style={styles.headerSubtext}>
-          {boundingBoxes.length > 0
+          {isFrozen
+            ? 'Pinch & drag to explore'
+            : boundingBoxes.length > 0
             ? `Detected ${boundingBoxes.length} text blocks`
-            : "Scanning..."}
+            : 'Scanning...'}
         </Text>
+
+        {/* Freeze / unfreeze button — upper-right of header */}
+        <Pressable
+          onPress={handleFreezeToggle}
+          style={styles.freezeButton}
+          hitSlop={8}
+        >
+          {isFrozen ? (
+            <Ionicons name="close-circle" size={28} color={Colors.textOnDark} />
+          ) : (
+            // Document + magnifying-glass composite icon
+            <View style={styles.freezeIconComposite}>
+              <Ionicons name="document-text-outline" size={26} color={Colors.textOnDark} />
+              <Ionicons
+                name="search"
+                size={14}
+                color={Colors.textOnDark}
+                style={styles.freezeIconBadge}
+              />
+            </View>
+          )}
+        </Pressable>
       </View>
 
       {/* Camera View with Bounding Box Overlay */}
@@ -637,7 +755,20 @@ export default function ScanScreen() {
           ))}
         </View>
 
-        {isProcessing && (
+        {/* Freeze-zoom overlay — shown instead of live camera when frozen */}
+        {isFrozen && frozenPhotoUri && cameraLayout.width > 0 && (
+          <FreezeZoomOverlay
+            photoUri={frozenPhotoUri}
+            boundingBoxes={frozenBoxes}
+            containerWidth={cameraLayout.width}
+            containerHeight={cameraLayout.height}
+            onBoxTap={(windowX, windowY) => {
+              overlayRef.current?.identifyAtPoint(windowX, windowY);
+            }}
+          />
+        )}
+
+        {isProcessing && !isFrozen && (
           <View style={styles.processingIndicator}>
             <Text style={styles.processingText}>●</Text>
           </View>
@@ -648,7 +779,7 @@ export default function ScanScreen() {
             ref={overlayRef}
             status={status}
             setStatus={setStatus}
-            textBlocks={boundingBoxes.map(b => ({
+            textBlocks={(isFrozen ? frozenBoxes : boundingBoxes).map(b => ({
               text: b.text,
               frame: { x: b.x, y: b.y, width: b.width, height: b.height }
             }))}
@@ -709,6 +840,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: Colors.dividerDark,
+    position: 'relative',
+  },
+  freezeButton: {
+    position: 'absolute',
+    right: Spacing.sm,
+    bottom: Spacing.sm,
+    padding: 4,
+  },
+  freezeIconComposite: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  freezeIconBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: -2,
   },
   headerText: {
     color: Colors.textOnDark,
