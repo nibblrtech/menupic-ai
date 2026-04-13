@@ -10,6 +10,7 @@ import React, { useRef, useState } from "react";
 import {
     Alert,
     Dimensions,
+    Linking,
     Platform,
     Pressable,
     StyleSheet,
@@ -215,7 +216,20 @@ export default function HomeScreen() {
           )}
 
           <Text style={styles.termsText}>
-            By continuing, you agree to our Terms of Service and Privacy Policy
+            By continuing, you agree to our{" "}
+            <Text
+              style={styles.termsLink}
+              onPress={() => Linking.openURL("https://sites.google.com/view/nibblr/menu-pic-terms-of-use?authuser=0")}
+            >
+              Terms of Use
+            </Text>
+            {" and "}
+            <Text
+              style={styles.termsLink}
+              onPress={() => Linking.openURL("https://sites.google.com/view/nibblr/menu-pic-privacy-policy?authuser=0")}
+            >
+              Privacy Policy
+            </Text>
           </Text>
         </View>
       </View>
@@ -319,5 +333,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     opacity: 0.5,
+  },
+  termsLink: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.bold,
+    textDecorationLine: 'underline',
+    opacity: 1,
   },
 });

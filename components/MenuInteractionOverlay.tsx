@@ -454,7 +454,11 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
         setIdentifiedDishName(data.dishName || '');
         setStatus('generating-image');
         try {
-          const pollUrl = await blackForestLabsService.generateDishImage(data.imagePrompt);
+          // Prepend cultural context so the image model reflects the correct
+          // cuisine style even when the imagePrompt Gemini wrote is brief.
+          const contextPrefix = data.menuType ? `[${data.menuType}] ` : '';
+          const enrichedImagePrompt = `${contextPrefix}${data.imagePrompt}`;
+          const pollUrl = await blackForestLabsService.generateDishImage(enrichedImagePrompt);
           if (!pollUrl) {
             setImageError('Image service returned no poll URL');
             setStatus('image-error');

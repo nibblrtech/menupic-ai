@@ -40,6 +40,8 @@ export interface DishAnalysisResult {
   description: string;
   nutrition: NutritionFacts;
   imagePrompt: string;
+  menuLanguage?: string;
+  menuType?: string;
   generatedImage?: string;
 }
 
@@ -70,9 +72,22 @@ class GeminiService {
     
     await this.initialize();
 
-    // Filter blocks to reduce token usage (simple heuristic: closer blocks first)
-    // You might want to sort these blocks by distance to clickX/Y before sending.
-    const relevantBlocks = blocks.slice(0, 50); 
+    // Sort all blocks by distance from the tap point so the nearest context
+    // (most likely to be the tapped dish) appears first in the prompt.
+    // We send all blocks (capped at 150 as a safety limit) so the LLM can
+    // also infer the menu's source language and cuisine type from the full page.
+    const sortedBlocks = [...blocks].sort((a, b) => {
+      const distA = Math.hypot(
+        clickX - (a.frame.x + a.frame.width / 2),
+        clickY - (a.frame.y + a.frame.height / 2)
+      );
+      const distB = Math.hypot(
+        clickX - (b.frame.x + b.frame.width / 2),
+        clickY - (b.frame.y + b.frame.height / 2)
+      );
+      return distA - distB;
+    });
+    const relevantBlocks = sortedBlocks.slice(0, 150);
 
     // Determine the language the user expects results in
     const languageInstruction = locale
@@ -88,6 +103,9 @@ class GeminiService {
       
       Look at the 'frame' coordinates. Text on the same Y-axis is likely the same line. 
       Titles are often above descriptions. Prices are often to the right.
+      The blocks are sorted nearest-to-farthest from the tap point, so the first few blocks
+      are most likely part of the tapped menu item. Use the FULL block list to detect
+      the menu's source language and cuisine/restaurant type.
 
       ${languageInstruction}
 
@@ -95,13 +113,20 @@ class GeminiService {
       ${JSON.stringify(relevantBlocks)}
 
       TASK:
-      1. Assemble the Dish Name.
-      2. Write a rich, engaging description (3-5 sentences) that includes:
-         - What the dish is and how it is typically prepared.
-         - A brief history or origin story of the dish.
-         - Any local traditions, regional variations, or colorful cultural details.
-         - Flavor profile or what makes this dish special.
-      3. Provide ESTIMATED nutrition facts for a single typical serving of this dish.
+      1. Detect the SOURCE LANGUAGE of the menu text (e.g. "Tibetan", "Japanese", "Spanish", "English").
+         Base this on ALL the blocks — look at character sets, words, and patterns across the whole menu.
+      2. Detect the MENU TYPE / cuisine style (e.g. "Tibetan restaurant", "Japanese izakaya",
+         "Mexican street food", "French bistro", "American diner", "Indian curry house").
+         Use the full page context — dish names, ingredients, and style clues — to determine this.
+      3. Assemble the Dish Name from the nearest blocks to the tap point.
+      4. Write a rich, engaging description (3-5 sentences) that includes:
+         - The dish's identity firmly grounded in its detected cuisine and cultural origin first.
+           Even a simple dish should be described as the cultural item it is (e.g. a Tibetan dish
+           should be introduced as Tibetan first, with its local context, preparation, and traditions).
+         - A brief history or origin story rooted in the detected menuLanguage / menuType.
+         - Any regional variations, local traditions, or colorful cultural details.
+         - Flavor profile or what makes this dish special in its native context.
+      5. Provide ESTIMATED nutrition facts for a single typical serving of this dish.
          These are estimates — do your best based on common recipes and portion sizes.
          Include: serving size, calories, total fat (g & %DV), saturated fat (g & %DV),
          trans fat (g), cholesterol (mg & %DV), sodium (mg & %DV),
@@ -109,10 +134,15 @@ class GeminiService {
          total sugars (g), added sugars (g & %DV), protein (g & %DV),
          and any pertinent vitamins & minerals with their %DV.
          %DV = percent daily value based on a 2,000 calorie diet.
-      4. Generate a descriptive prompt for an AI image generator to visualize this specific food.
+      6. Generate a descriptive prompt for an AI image generator to visualize this specific food.
+         The prompt MUST open with the cuisine/cultural context, e.g.
+         "A [menuType] dish: authentic [dishName], ..." so the image reflects the correct
+         cultural style, plating tradition, and presentation of that cuisine.
 
       RETURN JSON ONLY (No Markdown):
       {
+        "menuLanguage": "String (e.g. Tibetan, Japanese, Spanish)",
+        "menuType": "String (e.g. Tibetan restaurant, Japanese izakaya, Mexican street food)",
         "dishName": "String",
         "description": "String",
         "nutrition": {
