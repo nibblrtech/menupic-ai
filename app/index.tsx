@@ -306,11 +306,12 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: Spacing.sm,
     alignItems: 'center',
+    marginTop: Spacing.md,
   },
   appleButton: {
     width: '100%',
     height: Btn.height,
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   googleButton: {
     width: '100%',
@@ -319,7 +320,7 @@ const styles = StyleSheet.create({
     borderRadius: Btn.borderRadius,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   googleButtonText: {
     color: _btn.text,
