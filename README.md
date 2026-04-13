@@ -44,6 +44,11 @@ npx eas build --platform ios --profile production
 ```
 This creates a `.ipa` file with `distribution: store` for App Store/TestFlight.
 
+
+
+
+
+
 #### 2. Upload via Transporter
 1. Navigate to [expo.dev](https://expo.dev) to inspect the build and download the `.ipa` file
 2. Open **Transporter** app

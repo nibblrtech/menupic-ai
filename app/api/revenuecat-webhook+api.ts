@@ -1,19 +1,14 @@
 /**
- * RevenueCat Webhook API Route — POST /api/revenuecat-webhook
+ * RevenueCat Webhook API Route — DISABLED
  *
- * Receives subscription lifecycle events from RevenueCat and credits/manages
- * scans in the user's Supabase profile accordingly.
+ * MenuPic AI has migrated from subscriptions to one-time consumable IAPs.
+ * Subscription lifecycle events are no longer relevant. This route now
+ * responds with 200 immediately so RevenueCat doesn't retry unnecessarily
+ * if the webhook is still configured in the dashboard.
  *
- * Event types handled:
- *  • INITIAL_PURCHASE — first subscription purchase → credit 30 scans (all plans), store sub info
- *  • RENEWAL          — subscription renewed → credit 30 scans
- *  • CANCELLATION     — user cancelled auto-renew → mark subscription inactive
- *  • EXPIRATION       — subscription expired → mark subscription inactive
- *  • UNCANCELLATION   — user re-enabled auto-renew → mark subscription active
- *
- * Security: Validates the Authorization header against REVENUECAT_WEBHOOK_SECRET.
+ * Scan credits are now handled client-side via /api/credit-scans after
+ * each successful IAP purchase.
  */
-import supabase from '../../services/SupabaseService';
 
 /**
  * Number of scans credited per subscription period (monthly OR annual).

@@ -17,7 +17,7 @@ import {
 } from "react-native-vision-camera";
 import FreezeZoomOverlay from "../../components/FreezeZoomOverlay";
 import { MenuInteractionOverlay } from "../../components/MenuInteractionOverlay";
-import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../../constants/DesignSystem";
+import { Colors, Fonts, FontSize, Spacing } from "../../constants/DesignSystem";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useSubscription } from "../../contexts/SubscriptionContext";
 
@@ -315,11 +315,12 @@ export default function ScanScreen() {
   // ── Paywall gate ──
   const {
     needsPaywall,
-    isPremium,
     isLoading: subLoading,
     menuPicOffering,
+    creditProductPurchase,
+    refreshStatus,
   } = useSubscription();
-  const { profile, refreshProfile, isLoading: profileLoading, setScans } = useProfile();
+  const { profile, isLoading: profileLoading } = useProfile();
 
   // All hooks must be called unconditionally (Rules of Hooks)
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
@@ -342,6 +343,16 @@ export default function ScanScreen() {
     });
     return () => sub.remove();
   }, []);
+
+  // Trigger the OS native camera permission prompt only when the user definitively has
+  // scans (i.e. paywall won't appear). Watching profile.scans directly avoids firing
+  // during the 800 ms debounce window before the paywall shows up.
+  useEffect(() => {
+    const hasScans = (profile?.scans ?? 0) > 0;
+    if (hasScans && !hasPermission) {
+      requestPermission();
+    }
+  }, [profile?.scans, hasPermission, requestPermission]);
 
   const isActive = isFocused && appActive;
 
@@ -516,54 +527,6 @@ export default function ScanScreen() {
     }
   };
 
-  // ── Zero-scans server verification ──
-  // When a premium user's scan count drops to 0 *after having had scans*
-  // (i.e. after a scan was consumed), verify with the server before blocking.
-  // The webhook may have already credited new scans.
-  const [zeroScansVerified, setZeroScansVerified] = useState(false);
-  const [isVerifyingScans, setIsVerifyingScans] = useState(false);
-  const prevScansRef = useRef<number | null>(null);
-
-  // Track whether scans *dropped* to 0 from a positive value (consumed a scan).
-  // This avoids triggering the check when the profile initially loads with 0
-  // or immediately after a purchase sets scans to 30.
-  const scansDroppedToZero =
-    prevScansRef.current !== null &&
-    prevScansRef.current > 0 &&
-    profile !== null &&
-    profile.scans <= 0;
-
-  // Keep prevScansRef in sync — update *after* the derived flag is computed.
-  useEffect(() => {
-    if (profile) {
-      prevScansRef.current = profile.scans;
-    }
-  }, [profile?.scans]);
-
-  // Reset the verified flag whenever scans become positive again
-  useEffect(() => {
-    if (profile && profile.scans > 0 && zeroScansVerified) {
-      setZeroScansVerified(false);
-    }
-  }, [profile?.scans, zeroScansVerified]);
-
-  // Kick off a server check only when scans dropped to 0 via consumption
-  useEffect(() => {
-    if (!isPremium || !scansDroppedToZero || zeroScansVerified || isVerifyingScans) return;
-
-    let cancelled = false;
-    setIsVerifyingScans(true);
-
-    refreshProfile().finally(() => {
-      if (!cancelled) {
-        setIsVerifyingScans(false);
-        setZeroScansVerified(true);
-      }
-    });
-
-    return () => { cancelled = true; };
-  }, [isPremium, scansDroppedToZero, zeroScansVerified, isVerifyingScans, refreshProfile]);
-
   // ── Early returns (AFTER all hooks) ──
 
   // Show a loading indicator while subscription/profile data is loading
@@ -578,7 +541,7 @@ export default function ScanScreen() {
     );
   }
 
-  // Gate access to the scan page with the RevenueCat paywall
+  // Gate access to the scan page: show paywall when user has 0 scans
   if (needsPaywall) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.dark }}>
@@ -588,52 +551,21 @@ export default function ScanScreen() {
             offering: menuPicOffering ?? undefined,
             displayCloseButton: false,
           }}
-          onPurchaseCompleted={() => {
-            // The isPremium transition detector in SubscriptionContext
-            // already credited 30 scans. Set again as safety net.
-            // Note: this callback may not fire if the Paywall component
-            // unmounts first (RevenueCat listener updates isPremium and
-            // needsPaywall goes false before the callback runs).
-            setScans(30);
+          onPurchaseCompleted={({ storeTransaction }) => {
+            creditProductPurchase(storeTransaction.productIdentifier);
+            // Ask for camera permission immediately so the camera is ready
+            // the moment the paywall unmounts.
+            if (!hasPermission) {
+              requestPermission();
+            }
           }}
           onRestoreCompleted={() => {
-            // Transition detector handles crediting scans.
-            setScans(30);
+            refreshStatus();
+            if (!hasPermission) {
+              requestPermission();
+            }
           }}
         />
-      </View>
-    );
-  }
-
-  // Premium user with 0 scans — verify with server before blocking.
-  // The webhook may have credited new scans that the client doesn't know about.
-  if (isPremium && profile && profile.scans <= 0) {
-    // Scans dropped to 0 via consumption — verify with the server first
-    if (scansDroppedToZero && (isVerifyingScans || !zeroScansVerified)) {
-      return (
-        <View style={styles.container}>
-          <StatusBar style="light" />
-          <View style={styles.permissionContainer}>
-            <ActivityIndicator size="large" color={Colors.textOnDark} />
-            <Text style={[styles.permissionMessage, { marginTop: Spacing.sm }]}>
-              Checking scan credits…
-            </Text>
-          </View>
-        </View>
-      );
-    }
-
-    // Server confirmed 0 scans — show the info message
-    return (
-      <View style={styles.container}>
-        <StatusBar style="light" />
-        <View style={styles.permissionContainer}>
-          <Text style={styles.permissionTitle}>Out of Scans</Text>
-          <Text style={styles.permissionMessage}>
-            You've used all your scans for this period.{"\n"}
-            Your credits will refresh at the start of your next billing cycle.
-          </Text>
-        </View>
       </View>
     );
   }
@@ -647,19 +579,9 @@ export default function ScanScreen() {
   }
 
   if (!hasPermission) {
-    const _btn = buttonColors('dark');
     return (
       <View style={styles.container}>
         <StatusBar style="light" />
-        <View style={styles.permissionContainer}>
-          <Text style={styles.permissionTitle}>Camera Access Required</Text>
-          <Text style={styles.permissionMessage}>
-            We need your permission to show the camera
-          </Text>
-          <Pressable style={styles.permissionButton} onPress={requestPermission}>
-            <Text style={[styles.permissionButtonText, { color: _btn.text }]}>Grant Permission</Text>
-          </Pressable>
-        </View>
       </View>
     );
   }
@@ -792,8 +714,6 @@ export default function ScanScreen() {
   );
 }
 
-const _permBtn = buttonColors('dark');
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -820,18 +740,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: Spacing.md,
     opacity: 0.7,
-  },
-  permissionButton: {
-    height: Btn.height,
-    borderRadius: Btn.borderRadius,
-    backgroundColor: _permBtn.bg,
-    paddingHorizontal: Spacing.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  permissionButtonText: {
-    fontSize: FontSize.normal,
-    fontFamily: Fonts.bold,
   },
   header: {
     backgroundColor: Colors.dark,

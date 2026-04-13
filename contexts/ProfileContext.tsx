@@ -3,7 +3,6 @@ import React, {
     useCallback,
     useContext,
     useEffect,
-    useRef,
     useState,
     type PropsWithChildren,
 } from 'react';
@@ -23,6 +22,8 @@ interface ProfileState {
   decrementScan: () => void;
   /** Optimistically set the scan count on the client (e.g. after purchase). */
   setScans: (count: number) => void;
+  /** Optimistically add `amount` scans to the current count on the client (e.g. after IAP). */
+  addScans: (amount: number) => void;
 }
 
 const ProfileContext = createContext<ProfileState>({
@@ -32,6 +33,7 @@ const ProfileContext = createContext<ProfileState>({
   refreshProfile: async () => {},
   decrementScan: () => {},
   setScans: () => {},
+  addScans: () => {},
 });
 
 export function ProfileProvider({ children }: PropsWithChildren) {
@@ -40,11 +42,6 @@ export function ProfileProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // When true, refreshProfile() becomes a no-op. This prevents any server
-  // fetch from overwriting the optimistic 30 scans granted after purchase.
-  // Cleared on the first decrementScan() (i.e. user actually scans a dish).
-  const justSubscribedRef = useRef(false);
 
   const fetchProfile = useCallback(async (uid: string) => {
     setIsLoading(true);
@@ -79,26 +76,17 @@ export function ProfileProvider({ children }: PropsWithChildren) {
   }, [userId, fetchProfile]);
 
   const refreshProfile = useCallback(async () => {
-    if (justSubscribedRef.current) {
-      // Skip server fetch — the user just subscribed and we don't want
-      // a stale server response (webhook not yet processed) to overwrite
-      // the optimistic 30 scans.
-      if (__DEV__) console.log('[ProfileContext] refreshProfile skipped — justSubscribed is true');
-      return;
-    }
     if (userId) {
       await fetchProfile(userId);
     }
   }, [userId, fetchProfile]);
 
   /**
-   * Optimistically set the local scan count (e.g. after a purchase grants 30 scans).
-   * This updates the client UI immediately without waiting for a server round-trip.
-   * Also sets the justSubscribed guard so refreshProfile won't overwrite this value.
+   * Optimistically set the local scan count.
+   * Updates the client UI immediately without waiting for a server round-trip.
    */
   const setScans = useCallback((count: number) => {
-    justSubscribedRef.current = true;
-    if (__DEV__) console.log(`[ProfileContext] setScans(${count}) — justSubscribed guard ON`);
+    if (__DEV__) console.log(`[ProfileContext] setScans(${count})`);
     setProfile(prev => {
       if (!prev) return prev;
       return new UserProfile(
@@ -115,16 +103,31 @@ export function ProfileProvider({ children }: PropsWithChildren) {
   }, []);
 
   /**
+   * Optimistically add `amount` to the current scan count (e.g. after an IAP).
+   * Updates the client UI immediately without waiting for a server round-trip.
+   */
+  const addScans = useCallback((amount: number) => {
+    if (__DEV__) console.log(`[ProfileContext] addScans(${amount})`);
+    setProfile(prev => {
+      if (!prev) return prev;
+      return new UserProfile(
+        prev.userId,
+        prev.createdAt,
+        prev.updatedAt,
+        prev.scans + amount,
+        prev.subscriptionProductId,
+        prev.subscriptionStartedAt,
+        prev.lastScanCreditAt,
+        prev.subscriptionActive,
+      );
+    });
+  }, []);
+
+  /**
    * Optimistically decrement the scan count by 1 on the client, then persist
    * the change via the /api/consume-scan endpoint in the background.
    */
   const decrementScan = useCallback(() => {
-    // The user is actively scanning — clear the guard so future
-    // refreshProfile calls work normally (e.g. zero-scans verification).
-    if (justSubscribedRef.current) {
-      justSubscribedRef.current = false;
-      if (__DEV__) console.log('[ProfileContext] decrementScan — justSubscribed guard OFF');
-    }
     setProfile(prev => {
       if (!prev || prev.scans <= 0) return prev;
       return new UserProfile(
@@ -152,7 +155,7 @@ export function ProfileProvider({ children }: PropsWithChildren) {
   }, [userId]);
 
   return (
-    <ProfileContext.Provider value={{ profile, isLoading, error, refreshProfile, decrementScan, setScans }}>
+    <ProfileContext.Provider value={{ profile, isLoading, error, refreshProfile, decrementScan, setScans, addScans }}>
       {children}
     </ProfileContext.Provider>
   );

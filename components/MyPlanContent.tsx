@@ -1,11 +1,11 @@
 /**
  * MyPlanContent — rendered inside the "My Plan" accordion on the Account screen.
  *
- * Displays three simple rows:
- *  1. Plan type   — None / Monthly / Annual
- *  2. Renewal     — when the plan auto-renews (or "Expires" if cancelled)
- *  3. Scans left  — remaining scans this month (from the user profile)
- *  4. Refresh     — button to fetch the latest scan count from the server
+ * Displays:
+ *  1. Scans remaining — current scan balance
+ *  2. Three IAP purchase buttons — Starter (10 scans / $1.99),
+ *     Popular (30 scans / $4.99), Traveller (75 scans / $9.99)
+ *  3. Refresh button — re-fetch scan count from the server
  */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useState } from 'react';
@@ -19,16 +19,18 @@ import {
 import { Colors, Fonts, FontSize, Spacing } from '../constants/DesignSystem';
 import { useProfile } from '../contexts/ProfileContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
-import { Products } from '../services/RevenueCatService';
 
 export default function MyPlanContent() {
   const { profile, refreshProfile } = useProfile();
   const {
     isLoading,
-    isPremium,
-    willRenew,
-    expirationDate,
-    activeProductId,
+    isPurchasing,
+    starterPackage,
+    popularPackage,
+    travellerPackage,
+    purchaseStarter,
+    purchasePopular,
+    purchaseTraveller,
   } = useSubscription();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -51,27 +53,6 @@ export default function MyPlanContent() {
     );
   }
 
-  // ── Derive plan label ──
-  let planLabel = 'None';
-  if (isPremium && activeProductId) {
-    if (activeProductId === Products.PREMIUM_ANNUAL) {
-      planLabel = 'Annual';
-    } else if (activeProductId === Products.PREMIUM_MONTHLY) {
-      planLabel = 'Monthly';
-    } else {
-      planLabel = 'Premium'; // fallback for unexpected product id
-    }
-  }
-
-  // ── Formatted renewal / expiration date ──
-  const formattedDate = expirationDate
-    ? new Date(expirationDate).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    : null;
-
   const scansRemaining = profile?.scans ?? 0;
 
   // ── Scans value color: red if < 3, yellow if < 10, default otherwise ──
@@ -82,27 +63,12 @@ export default function MyPlanContent() {
         ? Colors.warning
         : Colors.textOnDark;
 
+  // Display price from RC package, or fall back to hardcoded price
+  const getPrice = (pkg: any, fallback: string): string =>
+    pkg?.product?.priceString ?? fallback;
+
   return (
     <View style={styles.container}>
-      {/* ── Plan type ── */}
-      <View style={styles.card}>
-        <Text style={styles.label}>Plan type</Text>
-        <Text style={styles.value}>{planLabel}</Text>
-      </View>
-
-      {/* ── Auto-renewal date ── */}
-      <View style={styles.card}>
-        <Text style={styles.label}>
-          {isPremium && willRenew
-            ? 'Auto-renews on'
-            : isPremium
-              ? 'Expires on'
-              : 'Renews on'}
-        </Text>
-        <Text style={styles.value}>
-          {isPremium && formattedDate ? formattedDate : '—'}
-        </Text>
-      </View>
 
       {/* ── Scans remaining ── */}
       <View style={styles.card}>
@@ -110,11 +76,83 @@ export default function MyPlanContent() {
         <Text style={[styles.value, { color: scansColor }]}>{scansRemaining}</Text>
       </View>
 
+      {/* ── Section header ── */}
+      <Text style={styles.sectionHeader}>Add more scans</Text>
+
+      {/* ── Starter pack ── */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.purchaseBtn,
+          pressed && styles.purchaseBtnPressed,
+          isPurchasing && styles.purchaseBtnDisabled,
+        ]}
+        onPress={purchaseStarter}
+        disabled={isPurchasing}
+      >
+        <View style={styles.purchaseBtnLeft}>
+          <Text style={styles.purchaseBtnTitle}>Starter</Text>
+          <Text style={styles.purchaseBtnSubtitle}>10 scans</Text>
+        </View>
+        {isPurchasing ? (
+          <ActivityIndicator size="small" color={Colors.textOnDark} />
+        ) : (
+          <Text style={styles.purchaseBtnPrice}>{getPrice(starterPackage, '$1.99')}</Text>
+        )}
+      </Pressable>
+
+      {/* ── Popular pack ── */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.purchaseBtn,
+          styles.purchaseBtnPopular,
+          pressed && styles.purchaseBtnPressed,
+          isPurchasing && styles.purchaseBtnDisabled,
+        ]}
+        onPress={purchasePopular}
+        disabled={isPurchasing}
+      >
+        <View style={styles.purchaseBtnLeft}>
+          <View style={styles.popularRow}>
+            <Text style={styles.purchaseBtnTitle}>Popular</Text>
+            <View style={styles.popularBadge}>
+              <Text style={styles.popularBadgeText}>BEST VALUE</Text>
+            </View>
+          </View>
+          <Text style={styles.purchaseBtnSubtitle}>30 scans</Text>
+        </View>
+        {isPurchasing ? (
+          <ActivityIndicator size="small" color={Colors.textOnDark} />
+        ) : (
+          <Text style={styles.purchaseBtnPrice}>{getPrice(popularPackage, '$4.99')}</Text>
+        )}
+      </Pressable>
+
+      {/* ── Traveller pack ── */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.purchaseBtn,
+          pressed && styles.purchaseBtnPressed,
+          isPurchasing && styles.purchaseBtnDisabled,
+        ]}
+        onPress={purchaseTraveller}
+        disabled={isPurchasing}
+      >
+        <View style={styles.purchaseBtnLeft}>
+          <Text style={styles.purchaseBtnTitle}>Traveller</Text>
+          <Text style={styles.purchaseBtnSubtitle}>75 scans</Text>
+        </View>
+        {isPurchasing ? (
+          <ActivityIndicator size="small" color={Colors.textOnDark} />
+        ) : (
+          <Text style={styles.purchaseBtnPrice}>{getPrice(travellerPackage, '$9.99')}</Text>
+        )}
+      </Pressable>
+
       {/* ── Refresh button ── */}
       <Pressable
         style={({ pressed }) => [styles.refreshBtn, pressed && styles.refreshBtnPressed]}
         onPress={handleRefresh}
-        disabled={isRefreshing}
+        disabled={isRefreshing || isPurchasing}
       >
         {isRefreshing ? (
           <ActivityIndicator size="small" color={Colors.textOnDark} />
@@ -125,6 +163,7 @@ export default function MyPlanContent() {
           </>
         )}
       </Pressable>
+
     </View>
   );
 }
@@ -162,6 +201,74 @@ const styles = StyleSheet.create({
     fontSize: FontSize.normal,
     fontFamily: Fonts.bold,
   },
+  sectionHeader: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    opacity: 0.45,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  purchaseBtn: {
+    backgroundColor: 'rgba(255,246,238,0.08)',
+    borderRadius: 14,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,246,238,0.12)',
+  },
+  purchaseBtnPopular: {
+    borderColor: 'rgba(255,246,238,0.35)',
+    backgroundColor: 'rgba(255,246,238,0.13)',
+  },
+  purchaseBtnPressed: {
+    opacity: 0.65,
+  },
+  purchaseBtnDisabled: {
+    opacity: 0.5,
+  },
+  purchaseBtnLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  popularRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  purchaseBtnTitle: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+  },
+  purchaseBtnSubtitle: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    opacity: 0.55,
+  },
+  purchaseBtnPrice: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+  },
+  popularBadge: {
+    backgroundColor: Colors.warning,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  popularBadgeText: {
+    color: Colors.textOnLight,
+    fontSize: 9,
+    fontFamily: Fonts.bold,
+    letterSpacing: 0.5,
+  },
   refreshBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -171,6 +278,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.dividerDark,
+    marginTop: 4,
   },
   refreshBtnPressed: {
     opacity: 0.5,

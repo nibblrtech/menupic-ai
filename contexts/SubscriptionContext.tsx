@@ -1,17 +1,23 @@
 /**
- * SubscriptionContext — client-side subscription & purchase state for MenuPic AI.
+ * SubscriptionContext — IAP purchase state for MenuPic AI.
  *
- * Wraps RevenueCat to expose a simple API surface:
- *  • isPremium            – does the user have an active MenuPicAI subscription?
- *  • needsPaywall         – should the paywall be shown (0 scans + no entitlement)?
- *  • offerings            – current RevenueCat offerings (packages / prices)
+ * Wraps RevenueCat to expose a simple API surface for one-time consumable
+ * in-app purchases (no subscriptions):
+ *
+ *  • needsPaywall         – should the paywall be shown (user has 0 scans)?
+ *  • isLoading            – true while initialising
+ *  • isPurchasing         – true during a purchase flow
+ *  • offerings            – current RevenueCat offerings
  *  • menuPicOffering      – the specific MENUPICAIOFFERING offering object
- *  • purchasePremium()    – buy the monthly subscription
- *  • purchaseAnnual()     – buy the annual subscription
- *  • restorePurchases()   – restore previous purchases
- *  • manageSubscription() – open the platform subscription-management sheet
- *  • refreshStatus()      – re-fetch customer info
- *  • presentPaywall()     – imperatively present the RevenueCat paywall
+ *  • starterPackage       – the MENUPIC_IAP_STARTER RC package (or null)
+ *  • popularPackage       – the MENUPIC_IAP_POPULAR RC package (or null)
+ *  • travellerPackage     – the MENUPIC_IAP_TRAVELLER RC package (or null)
+ *  • purchaseStarter()    – buy 10 scans ($1.99)
+ *  • purchasePopular()    – buy 30 scans ($4.99)
+ *  • purchaseTraveller()  – buy 75 scans ($9.99)
+ *  • restorePurchases()   – restore previous purchases (required by App Store)
+ *  • refreshStatus()      – re-fetch offerings / customer info
+ *  • presentPaywall()     – imperatively present the RevenueCat paywall modal
  */
 import React, {
     createContext,
@@ -23,136 +29,97 @@ import React, {
     useState,
     type PropsWithChildren,
 } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert } from 'react-native';
 import Purchases, {
     PURCHASES_ERROR_CODE,
-    type CustomerInfo,
     type PurchasesOffering,
     type PurchasesOfferings,
     type PurchasesPackage,
 } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
-import { Entitlements, OfferingIds, configureRevenueCat, identifyUser, resetUser } from '../services/RevenueCatService';
+import { OfferingIds, Products, ScansPerProduct, configureRevenueCat, identifyUser, resetUser } from '../services/RevenueCatService';
 import { useAuth } from './AuthContext';
 import { useProfile } from './ProfileContext';
 
 // ─── Public interface ────────────────────────────────────────────────────────
 
 interface SubscriptionState {
-  /** True while we're loading offerings / customer info for the first time. */
+  /** True while we're loading offerings for the first time. */
   isLoading: boolean;
   /** True when a purchase flow is in progress. */
   isPurchasing: boolean;
-  /** Does the user currently hold the "MenuPicAI" entitlement? */
-  isPremium: boolean;
-  /** Will the premium subscription auto-renew? (false → user has cancelled) */
-  willRenew: boolean;
-  /** Human-readable expiration date of the current premium period, if any. */
-  expirationDate: string | null;
-  /** Product identifier of the active subscription (e.g. MENUPICAIPREMIUM, MENUPICAIPREMIUMANNUAL), or null. */
-  activeProductId: string | null;
   /** RevenueCat offerings — used to display prices. */
   offerings: PurchasesOfferings | null;
   /** The specific MENUPICAIOFFERING offering object. */
   menuPicOffering: PurchasesOffering | null;
-  /** Convenience: the monthly premium package from the offering. */
-  premiumPackage: PurchasesPackage | null;
-  /** Convenience: the annual premium package from the offering. */
-  annualPackage: PurchasesPackage | null;
-  /** True when the paywall should be displayed (0 scans + no entitlement). */
+  /** Convenience: the Starter IAP package (10 scans, $1.99). */
+  starterPackage: PurchasesPackage | null;
+  /** Convenience: the Popular IAP package (30 scans, $4.99). */
+  popularPackage: PurchasesPackage | null;
+  /** Convenience: the Traveller IAP package (75 scans, $9.99). */
+  travellerPackage: PurchasesPackage | null;
+  /** True when the paywall should be displayed (user has 0 scans). */
   needsPaywall: boolean;
-  /** Buy the premium monthly subscription. */
-  purchasePremium: () => Promise<boolean>;
-  /** Buy the premium annual subscription. */
-  purchaseAnnual: () => Promise<boolean>;
-  /** Restore previous purchases. */
+  /** Buy the Starter pack (10 scans, $1.99). */
+  purchaseStarter: () => Promise<boolean>;
+  /** Buy the Popular pack (30 scans, $4.99). */
+  purchasePopular: () => Promise<boolean>;
+  /** Buy the Traveller pack (75 scans, $9.99). */
+  purchaseTraveller: () => Promise<boolean>;
+  /** Restore previous purchases (required by App Store guidelines). */
   restorePurchases: () => Promise<void>;
-  /** Open the native subscription-management UI (cancel / change). */
-  manageSubscription: () => Promise<void>;
-  /** Re-fetch customer info & offerings. */
+  /** Re-fetch offerings. */
   refreshStatus: () => Promise<void>;
-  /** Imperatively present the RevenueCat paywall modal. Returns true if purchase/restore succeeded. */
+  /** Imperatively present the RevenueCat paywall modal. Returns true if a purchase succeeded. */
   presentPaywall: () => Promise<boolean>;
+  /** Credit scans for a completed purchase by product ID. Used by inline paywall callbacks. */
+  creditProductPurchase: (productId: string) => Promise<void>;
 }
 
 const SubscriptionContext = createContext<SubscriptionState>({
   isLoading: true,
   isPurchasing: false,
-  isPremium: false,
-  willRenew: false,
-  expirationDate: null,
-  activeProductId: null,
   offerings: null,
   menuPicOffering: null,
-  premiumPackage: null,
-  annualPackage: null,
+  starterPackage: null,
+  popularPackage: null,
+  travellerPackage: null,
   needsPaywall: false,
-  purchasePremium: async () => false,
-  purchaseAnnual: async () => false,
+  purchaseStarter: async () => false,
+  purchasePopular: async () => false,
+  purchaseTraveller: async () => false,
   restorePurchases: async () => {},
-  manageSubscription: async () => {},
   refreshStatus: async () => {},
   presentPaywall: async () => false,
+  creditProductPurchase: async () => {},
 });
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function SubscriptionProvider({ children }: PropsWithChildren) {
   const { userId } = useAuth();
-  const { profile, setScans } = useProfile();
-
-  /** Number of scans credited per subscription period. */
-  const SCANS_PER_PERIOD = 30;
+  const { profile, addScans, setScans, refreshProfile } = useProfile();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
-  const [isPremium, setIsPremium] = useState(false);
-  const [willRenew, setWillRenew] = useState(false);
-  const [expirationDate, setExpirationDate] = useState<string | null>(null);
-  const [activeProductId, setActiveProductId] = useState<string | null>(null);
   const [offerings, setOfferings] = useState<PurchasesOfferings | null>(null);
   const [menuPicOffering, setMenuPicOffering] = useState<PurchasesOffering | null>(null);
-  const [premiumPackage, setPremiumPackage] = useState<PurchasesPackage | null>(null);
-  const [annualPackage, setAnnualPackage] = useState<PurchasesPackage | null>(null);
-
-  // ── Auto-credit scans when isPremium transitions false → true ──
-  // This is the primary mechanism for granting 30 scans on purchase.
-  // It fires reliably regardless of which purchase path was used
-  // (purchasePremium, purchaseAnnual, presentPaywall, inline Paywall)
-  // because RevenueCat's CustomerInfo listener always updates isPremium.
-  const wasPremiumRef = useRef(isPremium);
-  useEffect(() => {
-    const wasPremium = wasPremiumRef.current;
-    wasPremiumRef.current = isPremium;
-
-    if (!wasPremium && isPremium) {
-      // User just became premium — credit 30 scans immediately.
-      if (__DEV__) {
-        console.log('[SubscriptionContext] isPremium false→true — crediting', SCANS_PER_PERIOD, 'scans');
-      }
-      setScans(SCANS_PER_PERIOD);
-    }
-  }, [isPremium, setScans, SCANS_PER_PERIOD]);
+  const [starterPackage, setStarterPackage] = useState<PurchasesPackage | null>(null);
+  const [popularPackage, setPopularPackage] = useState<PurchasesPackage | null>(null);
+  const [travellerPackage, setTravellerPackage] = useState<PurchasesPackage | null>(null);
 
   // ── Computed: does the user need the paywall? ──
-  // Raw value recomputes on every state change; debounced below to prevent
-  // UI flashing when the SDK fires a burst of CustomerInfo updates
-  // (common in sandbox where expired renewals replay rapidly).
+  // Show paywall when profile is loaded and scans === 0.
+  // Debounced to prevent UI flashing on rapid state transitions.
   const rawNeedsPaywall = useMemo(() => {
-    // Don't show paywall while loading
     if (isLoading) return false;
-    // Show paywall if user has 0 scans AND no active subscription entitlement
-    const hasNoScans = profile !== null && profile.scans === 0;
-    return hasNoScans && !isPremium;
-  }, [isLoading, profile, isPremium]);
+    return profile !== null && profile.scans <= 0;
+  }, [isLoading, profile]);
 
-  // Debounced version: hides immediately on purchase/restore but delays
-  // *showing* the paywall so rapid SDK event bursts don't cause flashing.
   const [needsPaywall, setNeedsPaywall] = useState(false);
   const paywallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Hide paywall immediately (user just purchased / restored)
     if (!rawNeedsPaywall) {
       if (paywallTimerRef.current) {
         clearTimeout(paywallTimerRef.current);
@@ -162,12 +129,11 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    // Show paywall only after a settling delay
     if (paywallTimerRef.current) clearTimeout(paywallTimerRef.current);
     paywallTimerRef.current = setTimeout(() => {
       setNeedsPaywall(true);
       paywallTimerRef.current = null;
-    }, 1500); // 1.5 s — enough for SDK event bursts to finish
+    }, 800);
 
     return () => {
       if (paywallTimerRef.current) {
@@ -177,47 +143,30 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     };
   }, [rawNeedsPaywall]);
 
-  // ── Helpers ──
-
-  const processCustomerInfo = useCallback((info: CustomerInfo) => {
-    const premium = info.entitlements.active[Entitlements.PREMIUM];
-
-    if (__DEV__) {
-      console.log('[SubscriptionContext] CustomerInfo update:', {
-        isPremium: !!premium,
-        willRenew: premium?.willRenew ?? false,
-        expirationDate: premium?.expirationDate ?? null,
-        isSandbox: (premium as any)?.isSandbox ?? null,
-        productId: premium?.productIdentifier ?? null,
-        allActiveEntitlements: Object.keys(info.entitlements.active),
-      });
-    }
-
-    setIsPremium(!!premium);
-    setWillRenew(premium?.willRenew ?? false);
-    setExpirationDate(premium?.expirationDate ?? null);
-    setActiveProductId(premium?.productIdentifier ?? null);
-  }, []);
+  // ── Load offerings ──
 
   const loadOfferings = useCallback(async () => {
     try {
       const offeringsResult = await Purchases.getOfferings();
       setOfferings(offeringsResult);
 
-      // Try to get the specific MENUPICAIOFFERING offering
       const specificOffering =
-        offeringsResult.all[OfferingIds.MENUPICAI] ?? offeringsResult.current;
+        offeringsResult.all[OfferingIds.MENUPIC] ?? offeringsResult.current;
 
       if (specificOffering) {
         setMenuPicOffering(specificOffering);
 
-        // The monthly subscription package
-        const monthly = specificOffering.monthly ?? null;
-        setPremiumPackage(monthly);
-
-        // The annual subscription package
-        const annual = specificOffering.annual ?? null;
-        setAnnualPackage(annual);
+        // Find IAP packages by product identifier within the offering's packages
+        const pkgs = specificOffering.availablePackages;
+        setStarterPackage(
+          pkgs.find(p => p.product.identifier === Products.STARTER) ?? null
+        );
+        setPopularPackage(
+          pkgs.find(p => p.product.identifier === Products.POPULAR) ?? null
+        );
+        setTravellerPackage(
+          pkgs.find(p => p.product.identifier === Products.TRAVELLER) ?? null
+        );
       }
     } catch (err) {
       console.warn('[SubscriptionContext] Failed to load offerings:', err);
@@ -237,18 +186,6 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
           await identifyUser(userId);
         }
 
-        // Invalidate the SDK cache so we fetch fresh data from the server
-        // instead of replaying stale sandbox renewal/expiration events.
-        await Purchases.invalidateCustomerInfoCache();
-
-        const info = await Purchases.getCustomerInfo();
-        if (!cancelled) {
-          processCustomerInfo(info);
-          if (__DEV__) {
-            console.log('[SubscriptionContext] Init complete — customer info loaded');
-          }
-        }
-
         await loadOfferings();
       } catch (err) {
         console.warn('[SubscriptionContext] Init error:', err);
@@ -257,19 +194,12 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       }
     })();
 
-    // Listen for real-time updates
-    const listener = (info: CustomerInfo) => {
-      if (!cancelled) processCustomerInfo(info);
-    };
-    Purchases.addCustomerInfoUpdateListener(listener);
-
     return () => {
       cancelled = true;
-      Purchases.removeCustomerInfoUpdateListener(listener);
     };
-  }, [userId, processCustomerInfo, loadOfferings]);
+  }, [userId, loadOfferings]);
 
-  // If user signs out, reset RevenueCat (skip initial mount when user is already anonymous)
+  // If user signs out, reset RevenueCat to anonymous
   const prevUserIdRef = React.useRef<string | null | undefined>(undefined);
   useEffect(() => {
     const wasSignedIn = prevUserIdRef.current != null;
@@ -277,43 +207,180 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
     if (!userId && wasSignedIn) {
       resetUser().catch(() => {});
-      setIsPremium(false);
-      setWillRenew(false);
-      setExpirationDate(null);
-      setActiveProductId(null);
     }
   }, [userId]);
 
+  // ── Core purchase helper ──
+
+  const doPurchase = useCallback(
+    async (pkg: PurchasesPackage | null, label: string): Promise<boolean> => {
+      if (!pkg) {
+        Alert.alert('Unavailable', `${label} is not available right now.`);
+        return false;
+      }
+      setIsPurchasing(true);
+      try {
+        await Purchases.purchasePackage(pkg);
+        const productId = pkg.product.identifier;
+        const scansToAdd = ScansPerProduct[productId] ?? 0;
+
+        if (__DEV__) {
+          console.log(`[SubscriptionContext] Purchased ${productId} — crediting ${scansToAdd} scans`);
+        }
+
+        // Optimistically credit scans on the client immediately for instant UI feedback
+        if (scansToAdd > 0) {
+          addScans(scansToAdd);
+        }
+
+        // Persist the credit to the server and sync the authoritative total back to the client
+        if (userId && scansToAdd > 0) {
+          try {
+            const res = await fetch('/api/credit-scans', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ user_id: userId, scans: scansToAdd, product_id: productId }),
+            });
+            if (res.ok) {
+              const json = await res.json();
+              // Sync with the server's authoritative scan total
+              if (typeof json.scans === 'number') {
+                setScans(json.scans);
+                if (__DEV__) {
+                  console.log(`[SubscriptionContext] Server confirmed ${json.scans} scans after purchase`);
+                }
+              }
+            } else {
+              const errJson = await res.json().catch(() => ({}));
+              console.warn('[SubscriptionContext] credit-scans failed:', res.status, errJson);
+              // Fall back to a full server refresh so the DB state wins
+              await refreshProfile();
+            }
+          } catch (err) {
+            console.warn('[SubscriptionContext] Failed to persist scan credit:', err);
+            // Fall back to a full server refresh so the DB state wins
+            await refreshProfile();
+          }
+        }
+
+        return true;
+      } catch (error: any) {
+        const isCancelled =
+          error.userCancelled ||
+          error.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
+        if (!isCancelled) {
+          Alert.alert('Purchase Error', error.message ?? 'Something went wrong.');
+        }
+        return false;
+      } finally {
+        setIsPurchasing(false);
+      }
+    },
+    [addScans, setScans, refreshProfile, userId]
+  );
+
+  // Credit scans for a purchase completed via the inline <RevenueCatUI.Paywall> component.
+  // That component doesn't go through doPurchase(), so we handle crediting here.
+  const creditProductPurchase = useCallback(
+    async (productId: string) => {
+      const scansToAdd = ScansPerProduct[productId] ?? 0;
+      if (__DEV__) {
+        console.log(`[SubscriptionContext] creditProductPurchase: ${productId} → ${scansToAdd} scans`);
+      }
+      if (scansToAdd > 0) {
+        addScans(scansToAdd);
+      }
+      if (userId && scansToAdd > 0) {
+        try {
+          const res = await fetch('/api/credit-scans', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, scans: scansToAdd, product_id: productId }),
+          });
+          if (res.ok) {
+            const json = await res.json();
+            if (typeof json.scans === 'number') {
+              setScans(json.scans);
+              if (__DEV__) {
+                console.log(`[SubscriptionContext] Server confirmed ${json.scans} scans after paywall purchase`);
+              }
+            }
+          } else {
+            console.warn('[SubscriptionContext] credit-scans failed, falling back to refreshProfile');
+            await refreshProfile();
+          }
+        } catch (err) {
+          console.warn('[SubscriptionContext] Failed to persist scan credit:', err);
+          await refreshProfile();
+        }
+      } else if (scansToAdd === 0) {
+        // Unknown product — fall back to server fetch to get the real count
+        await refreshProfile();
+      }
+    },
+    [addScans, setScans, refreshProfile, userId]
+  );
+
+  const purchaseStarter = useCallback(
+    () => doPurchase(starterPackage, 'Starter pack'),
+    [doPurchase, starterPackage]
+  );
+
+  const purchasePopular = useCallback(
+    () => doPurchase(popularPackage, 'Popular pack'),
+    [doPurchase, popularPackage]
+  );
+
+  const purchaseTraveller = useCallback(
+    () => doPurchase(travellerPackage, 'Traveller pack'),
+    [doPurchase, travellerPackage]
+  );
+
+  // ── Restore ──
+  // For consumable (non-subscription) IAPs, restorePurchases is required by
+  // the App Store but typically won't re-grant already-consumed items.
+
+  const doRestore = useCallback(async () => {
+    setIsPurchasing(true);
+    try {
+      await Purchases.restorePurchases();
+      Alert.alert(
+        'Restore Complete',
+        'Your purchase history has been checked.\nConsumed scan packs cannot be re-granted after use.',
+      );
+    } catch (error: any) {
+      Alert.alert('Restore Error', error.message ?? 'Something went wrong.');
+    } finally {
+      setIsPurchasing(false);
+    }
+  }, []);
+
+  // ── Refresh ──
+
+  const refreshStatus = useCallback(async () => {
+    await Promise.all([loadOfferings(), refreshProfile()]);
+  }, [loadOfferings, refreshProfile]);
+
   // ── Present Paywall (imperative) ──
+  // Used when the paywall is shown as a full-screen gate on the scan page.
+  // After purchase we credit scans for whichever package was bought.
 
   const doShowPaywall = useCallback(async (): Promise<boolean> => {
     try {
-      // Use the specific offering if available
-      const paywallOptions: any = {
-        displayCloseButton: false, // Gating access — no close button
-      };
+      const paywallOptions: any = { displayCloseButton: false };
       if (menuPicOffering) {
         paywallOptions.offering = menuPicOffering;
       }
 
       const result = await RevenueCatUI.presentPaywall(paywallOptions);
 
-      switch (result) {
-        case PAYWALL_RESULT.PURCHASED:
-          // The isPremium transition detector already credited 30 scans.
-          // Set again as a safety net (setScans is idempotent for same value).
-          setScans(SCANS_PER_PERIOD);
-          return true;
-        case PAYWALL_RESULT.RESTORED:
-          // The isPremium transition detector already credited 30 scans.
-          setScans(SCANS_PER_PERIOD);
-          return true;
-        case PAYWALL_RESULT.CANCELLED:
-        case PAYWALL_RESULT.NOT_PRESENTED:
-        case PAYWALL_RESULT.ERROR:
-        default:
-          return false;
+      if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
+        // We don't know exactly which package was tapped inside the RC paywall UI,
+        // so we refresh from the server to get the authoritative scan count.
+        await refreshProfile();
+        return true;
       }
+      return false;
     } catch (error: any) {
       const isCancelled =
         error.userCancelled ||
@@ -323,147 +390,26 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       }
       return false;
     }
-  }, [menuPicOffering, setScans, SCANS_PER_PERIOD]);
-
-  // ── Purchase: Premium Monthly ──
-
-  const purchasePremium = useCallback(async (): Promise<boolean> => {
-    if (!premiumPackage) {
-      Alert.alert('Unavailable', 'Monthly subscription is not available right now.');
-      return false;
-    }
-    setIsPurchasing(true);
-    try {
-      const { customerInfo } = await Purchases.purchasePackage(premiumPackage);
-      processCustomerInfo(customerInfo);
-
-      if (customerInfo.entitlements.active[Entitlements.PREMIUM]) {
-        // The isPremium transition detector already credited 30 scans.
-        // Set again as a safety net.
-        setScans(SCANS_PER_PERIOD);
-        return true;
-      }
-      return false;
-    } catch (error: any) {
-      const isCancelled =
-        error.userCancelled ||
-        error.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
-      if (!isCancelled) {
-        Alert.alert('Purchase Error', error.message ?? 'Something went wrong.');
-      }
-      return false;
-    } finally {
-      setIsPurchasing(false);
-    }
-  }, [premiumPackage, processCustomerInfo, setScans, SCANS_PER_PERIOD]);
-
-  // ── Purchase: Premium Annual ──
-
-  const purchaseAnnual = useCallback(async (): Promise<boolean> => {
-    if (!annualPackage) {
-      Alert.alert('Unavailable', 'Annual subscription is not available right now.');
-      return false;
-    }
-    setIsPurchasing(true);
-    try {
-      const { customerInfo } = await Purchases.purchasePackage(annualPackage);
-      processCustomerInfo(customerInfo);
-
-      if (customerInfo.entitlements.active[Entitlements.PREMIUM]) {
-        // The isPremium transition detector already credited 30 scans.
-        // Set again as a safety net.
-        setScans(SCANS_PER_PERIOD);
-        return true;
-      }
-      return false;
-    } catch (error: any) {
-      const isCancelled =
-        error.userCancelled ||
-        error.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
-      if (!isCancelled) {
-        Alert.alert('Purchase Error', error.message ?? 'Something went wrong.');
-      }
-      return false;
-    } finally {
-      setIsPurchasing(false);
-    }
-  }, [annualPackage, processCustomerInfo, setScans, SCANS_PER_PERIOD]);
-
-  // ── Restore ──
-
-  const doRestore = useCallback(async () => {
-    setIsPurchasing(true);
-    try {
-      const info = await Purchases.restorePurchases();
-      processCustomerInfo(info);
-      const restored = Object.keys(info.entitlements.active).length > 0;
-      Alert.alert(
-        restored ? 'Restored!' : 'Nothing Found',
-        restored
-          ? 'Your purchases have been restored.'
-          : 'No active subscriptions found to restore.',
-      );
-      if (restored) {
-        // The isPremium transition detector already credited 30 scans.
-        // Set again as a safety net.
-        setScans(SCANS_PER_PERIOD);
-      }
-    } catch (error: any) {
-      Alert.alert('Restore Error', error.message ?? 'Something went wrong.');
-    } finally {
-      setIsPurchasing(false);
-    }
-  }, [processCustomerInfo, setScans, SCANS_PER_PERIOD]);
-
-  // ── Manage (cancel) ──
-
-  const manageSubscription = useCallback(async () => {
-    try {
-      if (Platform.OS === 'ios') {
-        await Purchases.showManageSubscriptions();
-      } else {
-        const { Linking } = require('react-native');
-        await Linking.openURL(
-          'https://play.google.com/store/account/subscriptions',
-        );
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Could not open subscription management.');
-    }
-  }, []);
-
-  // ── Refresh ──
-
-  const refreshStatus = useCallback(async () => {
-    try {
-      const info = await Purchases.getCustomerInfo();
-      processCustomerInfo(info);
-      await loadOfferings();
-    } catch {
-      // silent
-    }
-  }, [processCustomerInfo, loadOfferings]);
+  }, [menuPicOffering, refreshProfile]);
 
   return (
     <SubscriptionContext.Provider
       value={{
         isLoading,
         isPurchasing,
-        isPremium,
-        willRenew,
-        expirationDate,
-        activeProductId,
         offerings,
         menuPicOffering,
-        premiumPackage,
-        annualPackage,
+        starterPackage,
+        popularPackage,
+        travellerPackage,
         needsPaywall,
-        purchasePremium,
-        purchaseAnnual,
+        purchaseStarter,
+        purchasePopular,
+        purchaseTraveller,
         restorePurchases: doRestore,
-        manageSubscription,
         refreshStatus,
         presentPaywall: doShowPaywall,
+        creditProductPurchase,
       }}
     >
       {children}

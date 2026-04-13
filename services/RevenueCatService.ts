@@ -4,8 +4,8 @@
  * Call `configureRevenueCat()` once at app launch (inside the root layout).
  * Everything here runs on the **client** side.
  *
- * Product / entitlement identifiers must match what you configure in the
- * RevenueCat dashboard, App Store Connect, and Google Play Console.
+ * Product identifiers must match what you configure in the RevenueCat
+ * dashboard, App Store Connect, and Google Play Console.
  */
 import { Platform } from 'react-native';
 import Purchases, { LOG_LEVEL, type LogHandler } from 'react-native-purchases';
@@ -16,26 +16,35 @@ import Purchases, { LOG_LEVEL, type LogHandler } from 'react-native-purchases';
 const RC_IOS_API_KEY = 'appl_gRIrZbxUVWrnwTkYFkxUJqxkcjh';
 const RC_ANDROID_API_KEY = 'test_ycfBeqJBBuSclaJeltyNSeruYRp';
 
-// ─── Product identifiers ────────────────────────────────────────────────────
-// These must match the product IDs you create in App Store Connect / Google
-// Play Console **and** register in the RevenueCat dashboard.
+// ─── IAP product identifiers ────────────────────────────────────────────────
+// One-time consumable purchases — no subscriptions.
 export const Products = {
-  /** Monthly premium subscription — 30 scans / month */
-  PREMIUM_MONTHLY: 'MENUPICAIPREMIUM',
-  /** Annual premium subscription — 12 months at a discount */
-  PREMIUM_ANNUAL: 'MENUPICAIPREMIUMANNUAL',
+  /** Starter pack — 10 scans — $1.99 */
+  STARTER: 'MENUPIC_IAP_STARTER',
+  /** Popular pack — 30 scans — $4.99 */
+  POPULAR: 'MENUPIC_IAP_POPULAR',
+  /** Traveller pack — 75 scans — $9.99 */
+  TRAVELLER: 'MENUPIC_IAP_TRAVELLER',
 } as const;
 
-// ─── Entitlement identifiers ────────────────────────────────────────────────
-export const Entitlements = {
-  /** Granted when the user has an active MenuPicAI subscription */
-  PREMIUM: 'MenuPicAI',
+/** Number of scans credited per IAP product. */
+export const ScansPerProduct: Record<string, number> = {
+  MENUPIC_IAP_STARTER: 10,
+  MENUPIC_IAP_POPULAR: 30,
+  MENUPIC_IAP_TRAVELLER: 75,
+};
+
+/** Fallback display prices (actual prices come from the store via RC package). */
+export const ProductPrices = {
+  MENUPIC_IAP_STARTER: '$1.99',
+  MENUPIC_IAP_POPULAR: '$4.99',
+  MENUPIC_IAP_TRAVELLER: '$9.99',
 } as const;
 
 // ─── Offering identifiers ───────────────────────────────────────────────────
 export const OfferingIds = {
-  /** The MenuPicAI paywall offering */
-  MENUPICAI: 'MENUPICAIOFFERING',
+  /** The "MenuPic" paywall offering identifier (configured in RC dashboard with IAP products) */
+  MENUPIC: 'MENUPICAIOFFERING',
 } as const;
 
 // ─── Initialisation ─────────────────────────────────────────────────────────
