@@ -89,14 +89,17 @@ export default function MyPlanContent() {
         onPress={purchaseStarter}
         disabled={isPurchasing}
       >
+        <Ionicons name="leaf" size={26} color="#6BCBA0" style={styles.packIcon} />
         <View style={styles.purchaseBtnLeft}>
-          <Text style={styles.purchaseBtnTitle}>Starter</Text>
+          <Text style={styles.purchaseBtnTitle}>Starter Pack</Text>
           <Text style={styles.purchaseBtnSubtitle}>10 scans</Text>
         </View>
         {isPurchasing ? (
           <ActivityIndicator size="small" color={Colors.textOnDark} />
         ) : (
-          <Text style={styles.purchaseBtnPrice}>{getPrice(starterPackage, '$1.99')}</Text>
+          <View style={styles.pricePill}>
+            <Text style={styles.pricePillText}>{getPrice(starterPackage, '$2.99')}</Text>
+          </View>
         )}
       </Pressable>
 
@@ -111,23 +114,21 @@ export default function MyPlanContent() {
         onPress={purchasePopular}
         disabled={isPurchasing}
       >
+        <Ionicons name="star" size={26} color="#F4A261" style={styles.packIcon} />
         <View style={styles.purchaseBtnLeft}>
-          <View style={styles.popularRow}>
-            <Text style={styles.purchaseBtnTitle}>Popular</Text>
-            <View style={styles.popularBadge}>
-              <Text style={styles.popularBadgeText}>BEST VALUE</Text>
-            </View>
-          </View>
+          <Text style={styles.purchaseBtnTitle}>Popular Pack</Text>
           <Text style={styles.purchaseBtnSubtitle}>30 scans</Text>
         </View>
         {isPurchasing ? (
           <ActivityIndicator size="small" color={Colors.textOnDark} />
         ) : (
-          <Text style={styles.purchaseBtnPrice}>{getPrice(popularPackage, '$4.99')}</Text>
+          <View style={styles.pricePill}>
+            <Text style={styles.pricePillText}>{getPrice(popularPackage, '$2.99')}</Text>
+          </View>
         )}
       </Pressable>
 
-      {/* ── Traveller pack ── */}
+      {/* ── Traveler pack ── */}
       <Pressable
         style={({ pressed }) => [
           styles.purchaseBtn,
@@ -137,14 +138,17 @@ export default function MyPlanContent() {
         onPress={purchaseTraveller}
         disabled={isPurchasing}
       >
+        <Ionicons name="flame" size={26} color={Colors.error} style={styles.packIcon} />
         <View style={styles.purchaseBtnLeft}>
-          <Text style={styles.purchaseBtnTitle}>Traveller</Text>
+          <Text style={styles.purchaseBtnTitle}>Traveler Pack</Text>
           <Text style={styles.purchaseBtnSubtitle}>75 scans</Text>
         </View>
         {isPurchasing ? (
           <ActivityIndicator size="small" color={Colors.textOnDark} />
         ) : (
-          <Text style={styles.purchaseBtnPrice}>{getPrice(travellerPackage, '$9.99')}</Text>
+          <View style={styles.pricePill}>
+            <Text style={styles.pricePillText}>{getPrice(travellerPackage, '$2.99')}</Text>
+          </View>
         )}
       </Pressable>
 
@@ -232,14 +236,12 @@ const styles = StyleSheet.create({
   purchaseBtnDisabled: {
     opacity: 0.5,
   },
+  packIcon: {
+    marginRight: Spacing.xs,
+  },
   purchaseBtnLeft: {
     flex: 1,
     gap: 2,
-  },
-  popularRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
   },
   purchaseBtnTitle: {
     color: Colors.textOnDark,
@@ -252,22 +254,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     opacity: 0.55,
   },
-  purchaseBtnPrice: {
-    color: Colors.textOnDark,
+  pricePill: {
+    backgroundColor: Colors.light,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    minWidth: 68,
+    alignItems: 'center',
+  },
+  pricePillText: {
+    color: Colors.textOnLight,
     fontSize: FontSize.normal,
     fontFamily: Fonts.bold,
-  },
-  popularBadge: {
-    backgroundColor: Colors.warning,
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
-  popularBadgeText: {
-    color: Colors.textOnLight,
-    fontSize: 9,
-    fontFamily: Fonts.bold,
-    letterSpacing: 0.5,
   },
   refreshBtn: {
     flexDirection: 'row',
