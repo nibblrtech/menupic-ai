@@ -101,7 +101,7 @@ async function main() {
       // If aspect ratio is preserved, just resize. If not preserved and user
       // confirmed, this will stretch to match the exact dimensions.
       fit: 'fill',
-    });
+    }).removeAlpha();
 
     const extLower = path.extname(outPath).toLowerCase();
     if (extLower === '.png') {
