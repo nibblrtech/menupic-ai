@@ -47,17 +47,50 @@ if (Platform.OS === "android") {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { signIn, isSignedIn } = useAuth();
+  const { signIn, isSignedIn, mode, continueAsGuest, isAuthReady, effectiveUserId } = useAuth();
   const carouselRef = useRef<ICarouselInstance>(null);
   const progress = useSharedValue<number>(0);
   const [carouselContainerHeight, setCarouselContainerHeight] = useState(0);
 
-  // If already signed in, redirect to tabs
+  // If already signed in, redirect to tabs.
+  // Guests should remain able to open this screen to optionally sign in later.
   React.useEffect(() => {
     if (isSignedIn) {
       router.replace("/(tabs)/scan");
     }
   }, [isSignedIn]);
+
+  const handleContinueAsGuest = async () => {
+    try {
+      await continueAsGuest();
+      router.replace("/(tabs)/scan");
+    } catch (error) {
+      console.error("[Auth] Continue as guest error:", error);
+      Alert.alert("Try Again", "Unable to continue as guest right now.");
+    }
+  };
+
+  const migrateGuestProfileIfNeeded = async (destinationUserId: string) => {
+    if (mode !== "guest" || !effectiveUserId) return;
+
+    try {
+      const response = await fetch('/api/link-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_user_id: effectiveUserId,
+          to_user_id: destinationUserId,
+        }),
+      });
+
+      if (!response.ok) {
+        const json = await response.json().catch(() => ({}));
+        console.warn('[Auth] Failed to migrate guest profile:', response.status, json);
+      }
+    } catch (error) {
+      console.warn('[Auth] Guest profile migration error:', error);
+    }
+  };
 
   const handleAppleSignIn = async () => {
     try {
@@ -82,6 +115,7 @@ export default function HomeScreen() {
       });
       console.log("[Auth] Using sub as userId:", sub);
 
+      await migrateGuestProfileIfNeeded(sub);
       signIn(sub, email);
       router.replace("/(tabs)/scan");
     } catch (e: any) {
@@ -113,6 +147,7 @@ export default function HomeScreen() {
         });
         console.log("[Auth] Using email as userId:", email);
 
+        await migrateGuestProfileIfNeeded(email);
         signIn(email, email);
         router.replace("/(tabs)/scan");
       } else {
@@ -214,6 +249,16 @@ export default function HomeScreen() {
               <Text style={styles.googleButtonText}>Sign in with Google</Text>
             </Pressable>
           )}
+
+          <Pressable
+            style={[styles.guestButton, !isAuthReady && styles.guestButtonDisabled]}
+            onPress={handleContinueAsGuest}
+            disabled={!isAuthReady}
+          >
+            <Text style={styles.guestButtonText}>
+              {isAuthReady ? "Continue as Guest" : "Preparing..."}
+            </Text>
+          </Pressable>
 
           <Text style={styles.termsText}>
             By continuing, you agree to our{" "}
@@ -324,6 +369,25 @@ const styles = StyleSheet.create({
   },
   googleButtonText: {
     color: _btn.text,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
+  },
+  guestButton: {
+    width: '100%',
+    height: Btn.height,
+    borderRadius: Btn.borderRadius,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.dividerDark,
+    backgroundColor: 'transparent',
+  },
+  guestButtonDisabled: {
+    opacity: 0.55,
+  },
+  guestButtonText: {
+    color: Colors.textOnDark,
     fontSize: FontSize.normal,
     fontFamily: Fonts.bold,
   },

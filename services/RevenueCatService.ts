@@ -112,6 +112,14 @@ export async function identifyUser(userId: string): Promise<void> {
 }
 
 /**
+ * Returns RevenueCat's current app user ID (anonymous or logged-in).
+ */
+export async function getCurrentRevenueCatUserId(): Promise<string> {
+  await configureRevenueCat();
+  return Purchases.getAppUserID();
+}
+
+/**
  * On sign-out, reset the RevenueCat user to anonymous.
  */
 export async function resetUser(): Promise<void> {

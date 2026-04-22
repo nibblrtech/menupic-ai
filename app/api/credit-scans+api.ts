@@ -13,6 +13,14 @@
  *  500 — database error
  */
 import supabase from '../../services/SupabaseService';
+import { getClientIp, isValidTrackedUserId } from './_identity';
+import { checkRateLimit } from './_rateLimit';
+
+const ALLOWED_PRODUCT_SCAN_CREDITS: Record<string, number> = {
+  MENUPIC_IAP_STARTER: 10,
+  MENUPIC_IAP_POPULAR: 30,
+  MENUPIC_IAP_TRAVELLER: 75,
+};
 
 export async function POST(request: Request) {
   try {
@@ -24,8 +32,37 @@ export async function POST(request: Request) {
     if (!userId) {
       return Response.json({ error: 'Missing required field: user_id' }, { status: 400 });
     }
+    if (!isValidTrackedUserId(userId)) {
+      return Response.json({ error: 'Invalid user_id format' }, { status: 400 });
+    }
     if (typeof scansToAdd !== 'number' || scansToAdd <= 0) {
       return Response.json({ error: 'Missing or invalid field: scans (must be a positive number)' }, { status: 400 });
+    }
+    if (!productId || !(productId in ALLOWED_PRODUCT_SCAN_CREDITS)) {
+      return Response.json({ error: 'Missing or invalid field: product_id' }, { status: 400 });
+    }
+
+    const expectedScans = ALLOWED_PRODUCT_SCAN_CREDITS[productId];
+    if (scansToAdd !== expectedScans) {
+      return Response.json(
+        { error: `Invalid scans for product_id. Expected ${expectedScans}.` },
+        { status: 400 },
+      );
+    }
+
+    const clientIp = getClientIp(request);
+    const limiter = checkRateLimit(`credit:${userId}:${clientIp}`, 30, 60_000);
+    if (!limiter.allowed) {
+      return new Response(
+        JSON.stringify({ error: 'Too many credit requests. Please try again shortly.' }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(limiter.retryAfterSeconds),
+          },
+        },
+      );
     }
 
     // Fetch current scan count

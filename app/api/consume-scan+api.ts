@@ -13,6 +13,8 @@
  *  500 — database error
  */
 import supabase from '../../services/SupabaseService';
+import { getClientIp, isValidTrackedUserId } from './_identity';
+import { checkRateLimit } from './_rateLimit';
 
 export async function POST(request: Request) {
   try {
@@ -21,6 +23,25 @@ export async function POST(request: Request) {
 
     if (!userId) {
       return Response.json({ error: 'Missing required field: user_id' }, { status: 400 });
+    }
+
+    if (!isValidTrackedUserId(userId)) {
+      return Response.json({ error: 'Invalid user_id format' }, { status: 400 });
+    }
+
+    const clientIp = getClientIp(request);
+    const limiter = checkRateLimit(`consume:${userId}:${clientIp}`, 120, 60_000);
+    if (!limiter.allowed) {
+      return new Response(
+        JSON.stringify({ error: 'Too many scan requests. Please slow down and retry.' }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(limiter.retryAfterSeconds),
+          },
+        },
+      );
     }
 
     // Atomically decrement scans, but never below 0.
@@ -41,22 +62,33 @@ export async function POST(request: Request) {
       return Response.json({ error: 'No scans remaining' }, { status: 400 });
     }
 
-    const newScans = profile.scans - 1;
+    const currentScans = profile.scans;
+    const newScans = currentScans - 1;
 
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('profile')
       .update({
         scans: newScans,
         updated_at: new Date().toISOString(),
       })
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('scans', currentScans)
+      .select('scans')
+      .maybeSingle();
 
     if (updateError) {
       console.error('[consume-scan] Update error:', updateError);
       return Response.json({ error: updateError.message }, { status: 500 });
     }
 
-    return Response.json({ scans: newScans });
+    if (!updated) {
+      return Response.json(
+        { error: 'Unable to consume scan due to concurrent update. Please try again.' },
+        { status: 409 },
+      );
+    }
+
+    return Response.json({ scans: updated.scans });
   } catch (err: any) {
     console.error('[consume-scan] Unhandled error:', err);
     return Response.json({ error: String(err?.message ?? err) }, { status: 500 });

@@ -37,7 +37,7 @@ import Purchases, {
     type PurchasesPackage,
 } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
-import { OfferingIds, Products, ScansPerProduct, configureRevenueCat, identifyUser, resetUser } from '../services/RevenueCatService';
+import { OfferingIds, Products, ScansPerProduct, configureRevenueCat, identifyUser } from '../services/RevenueCatService';
 import { useAuth } from './AuthContext';
 import { useProfile } from './ProfileContext';
 
@@ -97,7 +97,7 @@ const SubscriptionContext = createContext<SubscriptionState>({
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function SubscriptionProvider({ children }: PropsWithChildren) {
-  const { userId } = useAuth();
+  const { userId, effectiveUserId, isSignedIn } = useAuth();
   const { profile, addScans, setScans, refreshProfile } = useProfile();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -182,7 +182,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       try {
         await configureRevenueCat();
 
-        if (userId) {
+        if (isSignedIn && userId) {
           await identifyUser(userId);
         }
 
@@ -197,18 +197,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     return () => {
       cancelled = true;
     };
-  }, [userId, loadOfferings]);
-
-  // If user signs out, reset RevenueCat to anonymous
-  const prevUserIdRef = React.useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    const wasSignedIn = prevUserIdRef.current != null;
-    prevUserIdRef.current = userId;
-
-    if (!userId && wasSignedIn) {
-      resetUser().catch(() => {});
-    }
-  }, [userId]);
+  }, [isSignedIn, userId, loadOfferings]);
 
   // ── Core purchase helper ──
 
@@ -234,12 +223,12 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         }
 
         // Persist the credit to the server and sync the authoritative total back to the client
-        if (userId && scansToAdd > 0) {
+        if (effectiveUserId && scansToAdd > 0) {
           try {
             const res = await fetch('/api/credit-scans', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ user_id: userId, scans: scansToAdd, product_id: productId }),
+              body: JSON.stringify({ user_id: effectiveUserId, scans: scansToAdd, product_id: productId }),
             });
             if (res.ok) {
               const json = await res.json();
@@ -276,7 +265,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         setIsPurchasing(false);
       }
     },
-    [addScans, setScans, refreshProfile, userId]
+    [addScans, setScans, refreshProfile, effectiveUserId]
   );
 
   // Credit scans for a purchase completed via the inline <RevenueCatUI.Paywall> component.
@@ -290,12 +279,12 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       if (scansToAdd > 0) {
         addScans(scansToAdd);
       }
-      if (userId && scansToAdd > 0) {
+      if (effectiveUserId && scansToAdd > 0) {
         try {
           const res = await fetch('/api/credit-scans', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: userId, scans: scansToAdd, product_id: productId }),
+            body: JSON.stringify({ user_id: effectiveUserId, scans: scansToAdd, product_id: productId }),
           });
           if (res.ok) {
             const json = await res.json();
@@ -318,7 +307,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         await refreshProfile();
       }
     },
-    [addScans, setScans, refreshProfile, userId]
+    [addScans, setScans, refreshProfile, effectiveUserId]
   );
 
   const purchaseStarter = useCallback(

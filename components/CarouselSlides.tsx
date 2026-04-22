@@ -788,8 +788,8 @@ function ResultPopup() {
           A revered highland preparation from the Lhasa culinary tradition. Premium river fish is
           slow-steamed over smoldering juniper sprigs with hand-pressed citrus oils, then finished
           in a delicate broth of wild plateau herbs and mineral-rich glacial water.{'\n\n'}
-          The name <Text style={resultSt.bodyItalic}>Sha Lha</Text> — literally "sacred flesh
-          offering" — reflects the ancient Tibetan belief that a meal prepared with intention
+          The name <Text style={resultSt.bodyItalic}>Sha Lha</Text> — literally &quot;sacred flesh
+          offering&quot; — reflects the ancient Tibetan belief that a meal prepared with intention
           carries spiritual merit for both cook and guest. Historically served during Losar
           (Tibetan New Year) banquets hosted by noble families in the Potala quarter.{'\n\n'}
           Finished with a scattering of crispy roasted tsampa crumbs and edible alpine flowers

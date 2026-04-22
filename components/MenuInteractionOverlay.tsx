@@ -351,14 +351,14 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
     try {
       const raw = String(err?.message || err || '');
       let serialized = '';
-      try { serialized = JSON.stringify(err); } catch (_) { serialized = raw; }
+      try { serialized = JSON.stringify(err); } catch { serialized = raw; }
       const combined = (raw + ' ' + serialized).toLowerCase();
       const quota = /quota|exceeded|429/.test(combined);
       // look for retryDelay in seconds (e.g. "retryDelay":"15s") or RFC Retry-After
       const retryMatch = combined.match(/retrydelay"?:"?(\d+)s/i) || combined.match(/retry-after"?:"?(\d+)s?/i) || combined.match(/retry-?after\s*[:=]\s*(\d+)/i);
       const waitSecs = retryMatch ? Number(retryMatch[1]) : undefined;
       return { quota, waitSecs, raw: combined };
-    } catch (e) {
+    } catch {
       return { quota: false, raw: String(err) };
     }
   };
@@ -585,7 +585,7 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
               <View style={styles.contextBadge}>
                 <Text style={styles.contextLabel}>Looking up</Text>
                 <Text style={styles.contextValue} numberOfLines={3}>
-                  "{tappedText}"
+                  {`"${tappedText}"`}
                 </Text>
               </View>
             ) : null}
@@ -612,7 +612,7 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
               <View style={styles.contextBadge}>
                 <Text style={styles.contextLabel}>Creating a photo of</Text>
                 <Text style={styles.contextValue} numberOfLines={2}>
-                  "{identifiedDishName}"
+                  {`"${identifiedDishName}"`}
                 </Text>
               </View>
             ) : (

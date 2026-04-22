@@ -7,8 +7,10 @@
  * Server-side only — uses SupabaseService (service-role key preferred).
  */
 import supabase from '../../services/SupabaseService';
+import { getClientIp, isValidTrackedUserId } from './_identity';
+import { checkRateLimit } from './_rateLimit';
 
-const DEFAULT_FREE_SCANS = 5;
+const DEFAULT_FREE_SCANS = 3;
 
 export async function GET(request: Request) {
   try {
@@ -17,6 +19,25 @@ export async function GET(request: Request) {
 
     if (!userId) {
       return Response.json({ error: 'Missing required query parameter: user_id' }, { status: 400 });
+    }
+
+    if (!isValidTrackedUserId(userId)) {
+      return Response.json({ error: 'Invalid user_id format' }, { status: 400 });
+    }
+
+    const clientIp = getClientIp(request);
+    const limiter = checkRateLimit(`profile:${userId}:${clientIp}`, 60, 60_000);
+    if (!limiter.allowed) {
+      return new Response(
+        JSON.stringify({ error: 'Too many profile requests. Please try again shortly.' }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(limiter.retryAfterSeconds),
+          },
+        },
+      );
     }
 
     const { data, error } = await supabase

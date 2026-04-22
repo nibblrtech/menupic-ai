@@ -37,7 +37,7 @@ const ProfileContext = createContext<ProfileState>({
 });
 
 export function ProfileProvider({ children }: PropsWithChildren) {
-  const { userId } = useAuth();
+  const { effectiveUserId, isAuthReady } = useAuth();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,22 +64,24 @@ export function ProfileProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
-  // Fetch (or create) the profile whenever the signed-in user changes.
+  // Fetch (or create) the profile whenever the effective tracking identity changes.
   useEffect(() => {
-    if (userId) {
-      fetchProfile(userId);
+    if (!isAuthReady) return;
+
+    if (effectiveUserId) {
+      fetchProfile(effectiveUserId);
     } else {
-      // User signed out — clear the cached profile.
+      // No identity selected yet (first launch before Continue as Guest or Sign-In).
       setProfile(null);
       setError(null);
     }
-  }, [userId, fetchProfile]);
+  }, [effectiveUserId, fetchProfile, isAuthReady]);
 
   const refreshProfile = useCallback(async () => {
-    if (userId) {
-      await fetchProfile(userId);
+    if (effectiveUserId) {
+      await fetchProfile(effectiveUserId);
     }
-  }, [userId, fetchProfile]);
+  }, [effectiveUserId, fetchProfile]);
 
   /**
    * Optimistically set the local scan count.
@@ -143,16 +145,16 @@ export function ProfileProvider({ children }: PropsWithChildren) {
     });
 
     // Fire-and-forget: persist the decrement on the server
-    if (userId) {
+    if (effectiveUserId) {
       fetch('/api/consume-scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({ user_id: effectiveUserId }),
       }).catch(err => {
         console.warn('[ProfileContext] Failed to persist scan decrement:', err);
       });
     }
-  }, [userId]);
+  }, [effectiveUserId]);
 
   return (
     <ProfileContext.Provider value={{ profile, isLoading, error, refreshProfile, decrementScan, setScans, addScans }}>

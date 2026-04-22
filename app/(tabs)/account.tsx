@@ -21,7 +21,7 @@ type ConfirmModal = 'logout' | 'delete' | null;
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
-  const { userId, signOut } = useAuth();
+  const { userId, signOut, isSignedIn } = useAuth();
 
   const [modal, setModal] = useState<ConfirmModal>(null);
   const [planOpen, setPlanOpen] = useState(false);
@@ -50,9 +50,9 @@ export default function AccountScreen() {
     outputRange: ['0deg', '180deg'],
   });
 
-  const handleLogOut = () => {
+  const handleLogOut = async () => {
     setModal(null);
-    signOut();
+    await signOut();
     router.replace('/');
   };
 
@@ -76,7 +76,7 @@ export default function AccountScreen() {
       setIsDeleting(false);
       setModal(null);
     }
-    signOut();
+    await signOut();
     router.replace('/');
   };
 
@@ -120,27 +120,51 @@ export default function AccountScreen() {
             </Animated.View>
           </View>
 
-          {/* (b) Log Out */}
-          <Pressable style={styles.card} onPress={() => setModal('logout')}>
-            <View style={styles.cardRow}>
-              <View style={styles.cardLeft}>
-                <Ionicons name="log-out-outline" size={20} color={Colors.textOnDark} />
-                <Text style={styles.cardTitle}>Log Out</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textOnDark} style={styles.chevron} />
-            </View>
-          </Pressable>
+          {isSignedIn ? (
+            <>
+              {/* (b) Log Out */}
+              <Pressable style={styles.card} onPress={() => setModal('logout')}>
+                <View style={styles.cardRow}>
+                  <View style={styles.cardLeft}>
+                    <Ionicons name="log-out-outline" size={20} color={Colors.textOnDark} />
+                    <Text style={styles.cardTitle}>Log Out</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.textOnDark} style={styles.chevron} />
+                </View>
+              </Pressable>
 
-          {/* (c) Delete Account */}
-          <Pressable style={[styles.card, styles.cardDanger]} onPress={() => setModal('delete')}>
-            <View style={styles.cardRow}>
-              <View style={styles.cardLeft}>
-                <Ionicons name="trash-outline" size={20} color={Colors.textOnDark} />
-                <Text style={styles.cardTitle}>Delete Account</Text>
+              {/* (c) Delete Account */}
+              <Pressable style={[styles.card, styles.cardDanger]} onPress={() => setModal('delete')}>
+                <View style={styles.cardRow}>
+                  <View style={styles.cardLeft}>
+                    <Ionicons name="trash-outline" size={20} color={Colors.textOnDark} />
+                    <Text style={styles.cardTitle}>Delete Account</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.textOnDark} style={styles.chevron} />
+                </View>
+              </Pressable>
+            </>
+          ) : (
+            <View style={styles.card}>
+              <View style={styles.cardRow}>
+                <View style={styles.cardLeft}>
+                  <Ionicons name="person-outline" size={20} color={Colors.textOnDark} />
+                  <Text style={styles.cardTitle}>Guest mode active</Text>
+                </View>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textOnDark} style={styles.chevron} />
+              <View style={styles.guestHintWrap}>
+                <Text style={styles.guestHintText}>
+                  Sign in from the home screen to sync purchases across devices and manage your account.
+                </Text>
+                <Pressable
+                  style={styles.guestSignInBtn}
+                  onPress={() => router.replace('/')}
+                >
+                  <Text style={styles.guestSignInText}>Go to Sign-In</Text>
+                </Pressable>
+              </View>
             </View>
-          </Pressable>
+          )}
 
         </View>
       </ScrollView>
@@ -155,7 +179,7 @@ export default function AccountScreen() {
             <Ionicons name="log-out-outline" size={32} color={Colors.textOnLight} style={styles.modalIcon} />
             <Text style={styles.modalTitle}>Log Out?</Text>
             <Text style={styles.modalBody}>
-              You'll need to sign in again to use MenuPic AI.
+              You&apos;ll need to sign in again to use MenuPic AI.
             </Text>
             <Pressable style={styles.modalActionBtn} onPress={handleLogOut}>
               <Text style={styles.modalActionText}>Log Out</Text>
@@ -270,6 +294,31 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.dividerDark,
+  },
+  guestHintWrap: {
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.sm,
+  },
+  guestHintText: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.small,
+    fontFamily: Fonts.regular,
+    opacity: 0.7,
+    lineHeight: 18,
+  },
+  guestSignInBtn: {
+    marginTop: Spacing.sm,
+    height: Btn.height,
+    borderRadius: Btn.borderRadius,
+    borderWidth: 1,
+    borderColor: Colors.dividerDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestSignInText: {
+    color: Colors.textOnDark,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
   },
   // ── Modals ────────────────────────────────────────────
   overlay: {
