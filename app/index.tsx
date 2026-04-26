@@ -116,7 +116,7 @@ export default function HomeScreen() {
       console.log("[Auth] Using sub as userId:", sub);
 
       await migrateGuestProfileIfNeeded(sub);
-      signIn(sub, email);
+      await signIn(sub, email);
       router.replace("/(tabs)/scan");
     } catch (e: any) {
       if (e.code === "ERR_REQUEST_CANCELED") {
@@ -148,7 +148,7 @@ export default function HomeScreen() {
         console.log("[Auth] Using email as userId:", email);
 
         await migrateGuestProfileIfNeeded(email);
-        signIn(email, email);
+        await signIn(email, email);
         router.replace("/(tabs)/scan");
       } else {
         console.log("[Auth] Google Sign-In cancelled or no email");
@@ -237,13 +237,9 @@ export default function HomeScreen() {
         {/* Get Started / Sign-In Section */}
         <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 20 }]}>
           {Platform.OS === "ios" ? (
-            <AppleAuthentication.AppleAuthenticationButton
-              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-              cornerRadius={Btn.borderRadius}
-              style={styles.appleButton}
-              onPress={handleAppleSignIn}
-            />
+            <Pressable style={styles.appleButton} onPress={handleAppleSignIn}>
+              <Text style={styles.appleButtonText}>Sign in with Apple</Text>
+            </Pressable>
           ) : (
             <Pressable style={styles.googleButton} onPress={handleGoogleSignIn}>
               <Text style={styles.googleButtonText}>Sign in with Google</Text>
@@ -356,7 +352,16 @@ const styles = StyleSheet.create({
   appleButton: {
     width: '100%',
     height: Btn.height,
+    backgroundColor: _btn.bg,
+    borderRadius: Btn.borderRadius,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: Spacing.md,
+  },
+  appleButtonText: {
+    color: _btn.text,
+    fontSize: FontSize.normal,
+    fontFamily: Fonts.bold,
   },
   googleButton: {
     width: '100%',
@@ -379,7 +384,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: Spacing.md,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: Colors.dividerDark,
     backgroundColor: 'transparent',
   },

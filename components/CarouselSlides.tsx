@@ -32,6 +32,15 @@ const MENU_WINE   = '#5C4020'; // muted brown — wine pairing lines
  */
 const REF_W = 300;
 const REF_H = 400;
+const IPHONE_17_ASPECT_RATIO = 19.5 / 9; // height / width
+
+function getPhoneFrameSize(containerW: number, containerH: number) {
+  const maxWidth = containerW * 0.72;
+  const widthFromHeight = containerH / IPHONE_17_ASPECT_RATIO;
+  const phoneWidth = Math.min(maxWidth, widthFromHeight);
+  const phoneHeight = phoneWidth * IPHONE_17_ASPECT_RATIO;
+  return { phoneWidth, phoneHeight };
+}
 
 /** A bounding box in the REF_W × REF_H pixel coordinate space. */
 type OcrBox = { x: number; y: number; w: number; h: number };
@@ -486,6 +495,7 @@ export function ScanPageSlide() {
   const [cardSize, setCardSize] = useState<{ w: number; h: number } | null>(null);
   const [camSize,  setCamSize]  = useState<{ w: number; h: number } | null>(null);
   const [ocrBoxes, setOcrBoxes] = useState<OcrBox[]>([]);
+  const frameSize = cardSize ? getPhoneFrameSize(cardSize.w, cardSize.h) : null;
 
   return (
     <View
@@ -495,12 +505,12 @@ export function ScanPageSlide() {
         setCardSize({ w: width, h: height });
       }}
     >
-      {cardSize && (
+      {frameSize && (
         <>
           {/* ── Phone frame — silver aluminum body ── */}
           <View style={[scanSt.phoneOuter, {
-            width:  cardSize.w * 0.8,
-            height: cardSize.h,
+            width: frameSize.phoneWidth,
+            height: frameSize.phoneHeight,
           }]}>
 
             {/* Hardware side buttons */}
@@ -577,9 +587,9 @@ const scanSt = StyleSheet.create({
   // ── Phone frame — silver aluminum body ───────────────────────────────────────
   phoneOuter: {
     backgroundColor: '#C8C8C8',          // silver aluminum
-    borderRadius: 44,
-    padding: 7,                           // creates the visible frame ring
-    borderWidth: 1,
+    borderRadius: 42,
+    padding: 4,                           // thinner visible frame ring
+    borderWidth: 0.6,
     borderColor: 'rgba(255,255,255,0.6)', // polished-edge highlight
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
@@ -592,20 +602,20 @@ const scanSt = StyleSheet.create({
   sideBtn: {
     position: 'absolute',
     backgroundColor: '#ABABAB',          // slightly darker = machined recess
-    borderRadius: 2,
+    borderRadius: 1.5,
   },
-  volUp:    { left: -3, top: '24%', width: 4, height: 22 } as any,
-  volDown:  { left: -3, top: '33%', width: 4, height: 22 } as any,
-  powerBtn: { right: -3, top: '29%', width: 4, height: 38 } as any,
+  volUp:    { left: -2.5, top: '24%', width: 3, height: 20 } as any,
+  volDown:  { left: -2.5, top: '33%', width: 3, height: 20 } as any,
+  powerBtn: { right: -2.5, top: '29%', width: 3, height: 34 } as any,
 
   // ── Screen glass — inset display within the silver frame ─────────────────
   phoneScreen: {
     flex: 1,
     width: '100%',
-    borderRadius: 37,                    // frame radius minus padding
+    borderRadius: 38,                    // frame radius minus padding
     overflow: 'hidden',
     backgroundColor: Colors.dark,
-    borderWidth: 1,
+    borderWidth: 0.6,
     borderColor: 'rgba(0,0,0,0.5)',      // dark ring at glass-to-frame junction
     alignItems: 'center',
   },
@@ -814,6 +824,7 @@ export function ResultPageSlide() {
   const [cardSize, setCardSize] = useState<{ w: number; h: number } | null>(null);
   const [camSize,  setCamSize]  = useState<{ w: number; h: number } | null>(null);
   const [ocrBoxes, setOcrBoxes] = useState<OcrBox[]>([]);
+  const frameSize = cardSize ? getPhoneFrameSize(cardSize.w, cardSize.h) : null;
 
   return (
     <View
@@ -823,11 +834,11 @@ export function ResultPageSlide() {
         setCardSize({ w: width, h: height });
       }}
     >
-      {cardSize && (
+      {frameSize && (
         // ── Identical phone frame to ScanPageSlide ──────────────────────────
         <View style={[scanSt.phoneOuter, {
-          width:  cardSize.w * 0.8,
-          height: cardSize.h,
+          width: frameSize.phoneWidth,
+          height: frameSize.phoneHeight,
         }]}>
 
           {/* Hardware side buttons */}

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, type PropsWithChildren } from "react";
-import { getCurrentRevenueCatUserId, resetUser } from "../services/RevenueCatService";
+import { getCurrentRevenueCatUserId, identifyUser, resetUser } from "../services/RevenueCatService";
 
 type AuthMode = "signed-out" | "guest" | "signed-in";
 
@@ -14,7 +14,7 @@ interface AuthState {
   isAuthReady: boolean;
   isSignedIn: boolean;
   continueAsGuest: () => Promise<void>;
-  signIn: (userId: string, email?: string | null) => void;
+  signIn: (userId: string, email?: string | null) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthState>({
   isAuthReady: true,
   isSignedIn: false,
   continueAsGuest: async () => {},
-  signIn: () => {},
+  signIn: async () => {},
   signOut: async () => {},
 });
 
@@ -34,13 +34,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [effectiveUserId, setEffectiveUserId] = useState<string | null>(null);
+  const [guestRCUserId, setGuestRCUserId] = useState<string | null>(null);
   const [mode, setMode] = useState<AuthMode>("signed-out");
   const [isAuthReady, setIsAuthReady] = useState(true);
 
   const continueAsGuest = async () => {
     setIsAuthReady(false);
     try {
-      const rcUserId = await getCurrentRevenueCatUserId();
+      let rcUserId: string;
+      if (guestRCUserId) {
+        // Restore the known guest RC session before reading the ID, in case
+        // a sign-in changed the RC user since we last stored it.
+        await identifyUser(guestRCUserId);
+        rcUserId = guestRCUserId;
+      } else {
+        rcUserId = await getCurrentRevenueCatUserId();
+        // Store the guest RevenueCat user ID so we can restore it later when signing out.
+        setGuestRCUserId(rcUserId);
+      }
       setUserId(null);
       setEmail(null);
       setMode("guest");
@@ -50,7 +61,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   };
 
-  const signIn = (newUserId: string, newEmail?: string | null) => {
+  const signIn = async (newUserId: string, newEmail?: string | null) => {
+    try {
+      await identifyUser(newUserId);
+    } catch (err) {
+      console.warn('[AuthContext] Failed to identify user with RevenueCat:', err);
+    }
     setUserId(newUserId);
     setEmail(newEmail ?? null);
     setMode("signed-in");
@@ -60,12 +76,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const signOut = async () => {
     setIsAuthReady(false);
     try {
-      await resetUser();
-      const rcUserId = await getCurrentRevenueCatUserId();
+      if (guestRCUserId) {
+        // Restore the original guest RC session so the next continueAsGuest()
+        // call picks up the correct identity (and RC persists it across restarts).
+        await identifyUser(guestRCUserId);
+      } else {
+        // No known guest session — reset to a fresh anonymous RC user so that
+        // RC does not stay logged in as the signed-in user's account.
+        await resetUser();
+      }
       setUserId(null);
       setEmail(null);
-      setMode("guest");
-      setEffectiveUserId(`guest:${rcUserId}`);
+      // Use "signed-out" (not "guest") so that migrateGuestProfileIfNeeded
+      // is NOT triggered if another user signs in from the home screen
+      // before the original guest resumes their session.
+      setMode("signed-out");
+      setEffectiveUserId(null);
     } finally {
       setIsAuthReady(true);
     }
