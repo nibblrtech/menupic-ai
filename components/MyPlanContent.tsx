@@ -76,10 +76,12 @@ export default function MyPlanContent() {
         <Text style={[styles.value, { color: scansColor }]}>{scansRemaining}</Text>
       </View>
 
-      {/* ── Section header ── */}
-      <Text style={styles.sectionHeader}>Add more scans</Text>
+      {/* ── Add more scans ── */}
+      <>
+        {/* ── Section header ── */}
+        <Text style={styles.sectionHeader}>Add more scans</Text>
 
-      {/* ── Starter pack ── */}
+          {/* ── Starter pack ── */}
       <Pressable
         style={({ pressed }) => [
           styles.purchaseBtn,
@@ -167,6 +169,7 @@ export default function MyPlanContent() {
           </>
         )}
       </Pressable>
+      </>
 
     </View>
   );

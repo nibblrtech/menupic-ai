@@ -1,8 +1,3 @@
-import {
-    GoogleSignin,
-    statusCodes,
-} from "@react-native-google-signin/google-signin";
-import * as AppleAuthentication from "expo-apple-authentication";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -11,7 +6,6 @@ import {
     Alert,
     Dimensions,
     Linking,
-    Platform,
     Pressable,
     StyleSheet,
     Text,
@@ -24,7 +18,7 @@ import Carousel, {
 } from "react-native-reanimated-carousel";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MenuPageSlide, ResultPageSlide, ScanPageSlide } from "../components/CarouselSlides";
-import { Button as Btn, buttonColors, Colors, Fonts, FontSize, Spacing } from "../constants/DesignSystem";
+import { Button as Btn, Colors, Fonts, FontSize, Spacing } from "../constants/DesignSystem";
 import { useAuth } from "../contexts/AuthContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -35,30 +29,14 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
  */
 const SLIDES: number[] = [0, 1, 2];
 
-// Configure Google Sign-In only on Android (iOS uses Apple Sign-In)
-if (Platform.OS === "android") {
-  GoogleSignin.configure({
-    // TODO: Replace with your actual Google Cloud OAuth web client ID
-    webClientId: "568081811104-4vr26mj5jmd3kg52kn68ksitpo0f8a9f.apps.googleusercontent.com",
-    //webClientId: "YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com",
-    offlineAccess: true,
-  });
-}
-
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { signIn, isSignedIn, mode, continueAsGuest, isAuthReady, effectiveUserId } = useAuth();
+  const { continueAsGuest, isAuthReady, resetGuestState } = useAuth();
+  const logoTapCount = useRef(0);
+  const logoTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const carouselRef = useRef<ICarouselInstance>(null);
   const progress = useSharedValue<number>(0);
   const [carouselContainerHeight, setCarouselContainerHeight] = useState(0);
-
-  // If already signed in, redirect to tabs.
-  // Guests should remain able to open this screen to optionally sign in later.
-  React.useEffect(() => {
-    if (isSignedIn) {
-      router.replace("/(tabs)/scan");
-    }
-  }, [isSignedIn]);
 
   const handleContinueAsGuest = async () => {
     try {
@@ -66,110 +44,7 @@ export default function HomeScreen() {
       router.replace("/(tabs)/scan");
     } catch (error) {
       console.error("[Auth] Continue as guest error:", error);
-      Alert.alert("Try Again", "Unable to continue as guest right now.");
-    }
-  };
-
-  const migrateGuestProfileIfNeeded = async (destinationUserId: string) => {
-    if (mode !== "guest" || !effectiveUserId) return;
-
-    try {
-      const response = await fetch('/api/link-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from_user_id: effectiveUserId,
-          to_user_id: destinationUserId,
-        }),
-      });
-
-      if (!response.ok) {
-        const json = await response.json().catch(() => ({}));
-        console.warn('[Auth] Failed to migrate guest profile:', response.status, json);
-      }
-    } catch (error) {
-      console.warn('[Auth] Guest profile migration error:', error);
-    }
-  };
-
-  const handleAppleSignIn = async () => {
-    try {
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-
-      // `credential.user` is Apple's stable opaque user ID — this is the `sub` claim.
-      // It is always present, regardless of whether the user shared their email.
-      // `credential.email` is only returned on the VERY FIRST sign-in; null on all subsequent ones.
-      const sub = credential.user;
-      const email = credential.email ?? null;
-
-      console.log("[Auth] Apple Sign-In claims discovered:", {
-        sub,
-        email,
-        fullName: credential.fullName,
-        realUserStatus: credential.realUserStatus,
-      });
-      console.log("[Auth] Using sub as userId:", sub);
-
-      await migrateGuestProfileIfNeeded(sub);
-      await signIn(sub, email);
-      router.replace("/(tabs)/scan");
-    } catch (e: any) {
-      if (e.code === "ERR_REQUEST_CANCELED") {
-        console.log("[Auth] User canceled Apple Sign-In");
-      } else {
-        console.error("[Auth] Apple Sign-In error:", e);
-        Alert.alert("Sign-In Error", "Failed to sign in with Apple. Please try again.");
-      }
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    try {
-      await GoogleSignin.hasPlayServices();
-      const response = await GoogleSignin.signIn();
-
-      if (response.type === "success" && response.data?.user?.email) {
-        const { email, id: googleSub, name, photo } = response.data.user;
-
-        // Google Sign-In reliably returns email on every sign-in, making it
-        // a stable identifier for Android. `id` is the Google `sub` claim and
-        // is also available if you prefer a non-PII identifier in future.
-        console.log("[Auth] Google Sign-In claims discovered:", {
-          email,
-          googleSub,
-          name,
-          photo,
-        });
-        console.log("[Auth] Using email as userId:", email);
-
-        await migrateGuestProfileIfNeeded(email);
-        await signIn(email, email);
-        router.replace("/(tabs)/scan");
-      } else {
-        console.log("[Auth] Google Sign-In cancelled or no email");
-      }
-    } catch (error: any) {
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-        console.log("[Auth] User canceled Google Sign-In");
-      } else if (error.code === statusCodes.IN_PROGRESS) {
-        console.log("[Auth] Google Sign-In already in progress");
-      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        Alert.alert("Error", "Google Play Services are not available on this device.");
-      } else {
-        const errorCode = error.code ?? "no code";
-        const errorMessage = error.message ?? "no message";
-        const errorDetails = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
-        console.error("[Auth] Google Sign-In error:", errorDetails);
-        Alert.alert(
-          "Sign-In Error",
-          `Code: ${errorCode}\nMessage: ${errorMessage}\n\nFull error:\n${errorDetails}`
-        );
-      }
+      Alert.alert("Try Again", "Unable to start right now. Please try again.");
     }
   };
 
@@ -195,11 +70,26 @@ export default function HomeScreen() {
       <View style={[styles.content, { paddingTop: insets.top + Spacing.sm }]}>
         {/* App Logo & Name */}
         <View style={styles.logoContainer}>
-          <Image
-            source={require("../assets/images/icon.png")}
-            style={styles.logo}
-            contentFit="contain"
-          />
+          <Pressable
+            onPress={() => {
+              logoTapCount.current += 1;
+              if (logoTapTimer.current) clearTimeout(logoTapTimer.current);
+              if (logoTapCount.current >= 7) {
+                logoTapCount.current = 0;
+                resetGuestState().then(() => {
+                  Alert.alert('Reset', 'Guest state cleared — back to first launch.');
+                });
+              } else {
+                logoTapTimer.current = setTimeout(() => { logoTapCount.current = 0; }, 1500);
+              }
+            }}
+          >
+            <Image
+              source={require("../assets/images/icon.png")}
+              style={styles.logo}
+              contentFit="contain"
+            />
+          </Pressable>
           <Text style={styles.appName}>MenuPic AI</Text>
           <Text style={styles.tagline}>See your food before you order</Text>
         </View>
@@ -234,25 +124,15 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Get Started / Sign-In Section */}
+        {/* Get Started Section */}
         <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 20 }]}>
-          {Platform.OS === "ios" ? (
-            <Pressable style={styles.appleButton} onPress={handleAppleSignIn}>
-              <Text style={styles.appleButtonText}>Sign in with Apple</Text>
-            </Pressable>
-          ) : (
-            <Pressable style={styles.googleButton} onPress={handleGoogleSignIn}>
-              <Text style={styles.googleButtonText}>Sign in with Google</Text>
-            </Pressable>
-          )}
-
           <Pressable
-            style={[styles.guestButton, !isAuthReady && styles.guestButtonDisabled]}
+            style={[styles.getStartedButton, !isAuthReady && styles.getStartedButtonDisabled]}
             onPress={handleContinueAsGuest}
             disabled={!isAuthReady}
           >
-            <Text style={styles.guestButtonText}>
-              {isAuthReady ? "Continue as Guest" : "Preparing..."}
+            <Text style={styles.getStartedButtonText}>
+              {isAuthReady ? "Start Scanning" : "Preparing..."}
             </Text>
           </Pressable>
 
@@ -277,8 +157,6 @@ export default function HomeScreen() {
     </View>
   );
 }
-
-const _btn = buttonColors('dark');
 
 const styles = StyleSheet.create({
   container: {
@@ -349,35 +227,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.md,
   },
-  appleButton: {
-    width: '100%',
-    height: Btn.height,
-    backgroundColor: _btn.bg,
-    borderRadius: Btn.borderRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  appleButtonText: {
-    color: _btn.text,
-    fontSize: FontSize.normal,
-    fontFamily: Fonts.bold,
-  },
-  googleButton: {
-    width: '100%',
-    height: Btn.height,
-    backgroundColor: _btn.bg,
-    borderRadius: Btn.borderRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  googleButtonText: {
-    color: _btn.text,
-    fontSize: FontSize.normal,
-    fontFamily: Fonts.bold,
-  },
-  guestButton: {
+  getStartedButton: {
     width: '100%',
     height: Btn.height,
     borderRadius: Btn.borderRadius,
@@ -388,10 +238,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.dividerDark,
     backgroundColor: 'transparent',
   },
-  guestButtonDisabled: {
+  getStartedButtonDisabled: {
     opacity: 0.55,
   },
-  guestButtonText: {
+  getStartedButtonText: {
     color: Colors.textOnDark,
     fontSize: FontSize.normal,
     fontFamily: Fonts.bold,

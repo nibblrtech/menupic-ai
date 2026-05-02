@@ -53,6 +53,7 @@ interface FreezeZoomOverlayProps {
   boundingBoxes: BoundingBox[];
   containerWidth: number;
   containerHeight: number;
+  photoOrientation?: string;
   onBoxTap: (windowX: number, windowY: number) => void;
 }
 
@@ -146,6 +147,7 @@ export default function FreezeZoomOverlay({
   boundingBoxes,
   containerWidth,
   containerHeight,
+  photoOrientation,
   onBoxTap,
 }: FreezeZoomOverlayProps) {
   // ── Shared values ────────────────────────────────────────────────────────
@@ -252,10 +254,10 @@ export default function FreezeZoomOverlay({
   const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
   // ── Image animated style ─────────────────────────────────────────────────
-  // The Image is sized to containerWidth * scale × containerHeight * scale and
-  // positioned so it stays centred as scale changes.  No `transform: scale()`
-  // is used, so the image pipeline renders at the true display size — sharp at
-  // any zoom level.
+  // The Image is sized to containerWidth * scale × containerHeight * scale.
+  // RN's Image applies EXIF rotation automatically for local file:// URIs on iOS,
+  // so the visual content is always portrait-upright. Box coordinates from
+  // transformCoordinates are already in the same portrait display space.
   const imageStyle = useAnimatedStyle(() => {
     const s = scale.value;
     const w = containerWidth  * s;

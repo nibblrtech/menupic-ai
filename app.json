@@ -2,8 +2,8 @@
   "expo": {
     "name": "menupic-ai",
     "slug": "menupic-ai",
-    "version": "1.0.0",
-    "orientation": "default",
+    "version": "1.2.0",
+    "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "menupicai",
     "userInterfaceStyle": "automatic",
@@ -84,7 +84,8 @@
         }
       ],
       "expo-apple-authentication",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

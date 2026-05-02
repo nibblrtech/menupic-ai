@@ -263,6 +263,8 @@ interface Props {
   originalImageHeight: number;
   status: 'idle' | 'identifying' | 'generating-image' | 'complete' | 'image-error';
   setStatus: React.Dispatch<React.SetStateAction<'idle' | 'identifying' | 'generating-image' | 'complete' | 'image-error'>>;
+  /** Called when the results modal is dismissed via the Done button. */
+  onResultClose?: () => void;
 }
 
 export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay({ 
@@ -270,7 +272,8 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
   originalImageWidth, 
   originalImageHeight,
   status,
-  setStatus
+  setStatus,
+  onResultClose,
 }: Props, ref: any) {
   const { decrementScan } = useProfile();
   const [result, setResult] = useState<DishAnalysisResult | null>(null);
@@ -545,12 +548,13 @@ export const MenuInteractionOverlay = forwardRef(function MenuInteractionOverlay
     }
   };
 
-  useImperativeHandle(ref, () => ({ identifyAtPoint }));
+  useImperativeHandle(ref, () => ({ identifyAtPoint, cancelCurrentOperation }));
 
   const closeResult = () => {
     setResult(null);
     setStatus('idle');
     setImageError(null);
+    onResultClose?.();
   };
 
   /** Cancel any in-flight identification or image-generation and return to idle. */

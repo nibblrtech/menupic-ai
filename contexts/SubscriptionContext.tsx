@@ -37,7 +37,7 @@ import Purchases, {
     type PurchasesPackage,
 } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
-import { OfferingIds, Products, ScansPerProduct, configureRevenueCat, identifyUser } from '../services/RevenueCatService';
+import { OfferingIds, Products, ScansPerProduct, configureRevenueCat } from '../services/RevenueCatService';
 import { useAuth } from './AuthContext';
 import { useProfile } from './ProfileContext';
 
@@ -97,7 +97,7 @@ const SubscriptionContext = createContext<SubscriptionState>({
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function SubscriptionProvider({ children }: PropsWithChildren) {
-  const { userId, effectiveUserId, isSignedIn } = useAuth();
+  const { effectiveUserId } = useAuth();
   const { profile, addScans, setScans, refreshProfile } = useProfile();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -181,11 +181,6 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     (async () => {
       try {
         await configureRevenueCat();
-
-        if (isSignedIn && userId) {
-          await identifyUser(userId);
-        }
-
         await loadOfferings();
       } catch (err) {
         console.warn('[SubscriptionContext] Init error:', err);
@@ -197,7 +192,7 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
     return () => {
       cancelled = true;
     };
-  }, [isSignedIn, userId, loadOfferings]);
+  }, [loadOfferings]);
 
   // ── Core purchase helper ──
 

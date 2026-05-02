@@ -2,10 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import TextRecognition, {
     TextBlock,
     TextRecognitionResult,
+    TextRecognitionScript,
 } from "@react-native-ml-kit/text-recognition";
 import { useIsFocused } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import RevenueCatUI from 'react-native-purchases-ui';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,6 +19,7 @@ import {
 import FreezeZoomOverlay from "../../components/FreezeZoomOverlay";
 import { MenuInteractionOverlay } from "../../components/MenuInteractionOverlay";
 import { Colors, Fonts, FontSize, Spacing } from "../../constants/DesignSystem";
+import { useAuth } from "../../contexts/AuthContext";
 import { useProfile } from "../../contexts/ProfileContext";
 import { useSubscription } from "../../contexts/SubscriptionContext";
 
@@ -29,38 +31,33 @@ interface BoundingBox {
   text: string;
 }
 
-const OCR_INTERVAL_MS = 500;
+const OCR_INTERVAL_MS = 1000;
 
-// Helper function to transform ML Kit coordinates based on photo orientation and platform
-// 
+// Transform ML Kit bounding-box coordinates into display space.
+//
 // Platform differences:
 // - iOS: Photos are captured in landscape orientation internally (raw sensor pixels).
 //   ML Kit processes raw pixels, so coordinates need to be rotated based on orientation.
 // - Android: takeSnapshot captures in current preview orientation, coordinates align with display.
-//
 function transformCoordinates(
   frame: { left: number; top: number; width: number; height: number },
   photo: PhotoFile,
   displayWidth: number,
   displayHeight: number,
-  isFirstBlock: boolean = false
 ): { x: number; y: number; width: number; height: number } {
   const photoWidth = photo.width;
   const photoHeight = photo.height;
   const orientation = photo.orientation;
 
-  // On Android, ML Kit's InputImage.fromFilePath() automatically reads EXIF orientation
-  // and returns bounding box coordinates relative to the DISPLAY-oriented image.
-  // However, photo.width and photo.height are raw sensor dimensions.
+  // Android: ML Kit reads EXIF orientation and returns coordinates in display space.
+  // photo.width/height are raw sensor dimensions, so we need to handle the mismatch.
   if (Platform.OS === 'android') {
-    // Determine if we're in portrait or landscape display mode
     const isDisplayPortrait = displayHeight > displayWidth;
     const isPhotoPortrait = photoHeight > photoWidth;
-    
+
     if (isDisplayPortrait === isPhotoPortrait) {
       const scaleX = displayWidth / photoWidth;
       const scaleY = displayHeight / photoHeight;
-
       return {
         x: frame.left * scaleX,
         y: frame.top * scaleY,
@@ -68,33 +65,22 @@ function transformCoordinates(
         height: frame.height * scaleY,
       };
     }
-    
-    const effectivePhotoWidth = photoHeight;
-    const effectivePhotoHeight = photoWidth;
-    
-    const scaleX = displayWidth / effectivePhotoWidth;
-    const scaleY = displayHeight / effectivePhotoHeight;
-    
-    const rotatedLeft = frame.top;
-    const rotatedTop = photoWidth - frame.left - frame.width;
 
+    const scaleX = displayWidth / photoHeight;
+    const scaleY = displayHeight / photoWidth;
     return {
-      x: rotatedLeft * scaleX,
-      y: rotatedTop * scaleY,
+      x: frame.top * scaleX,
+      y: (photoWidth - frame.left - frame.width) * scaleY,
       width: frame.height * scaleX,
       height: frame.width * scaleY,
     };
   }
 
+  // iOS: photo.width/height are raw sensor dimensions.
+  // ML Kit processes raw pixels without applying EXIF rotation.
+  // We rotate and scale coordinates based on the device orientation.
   const isDisplayLandscape = displayWidth > displayHeight;
-  
-  if (isFirstBlock) {
-    console.log(`[iOS Transform] =============================================`);
-    console.log(`[iOS Transform] INPUTS:`);
-    console.log(`[iOS Transform] Photo: ${photoWidth}x${photoHeight} (${orientation})`);
-    console.log(`[iOS Transform] Display: ${displayWidth}x${displayHeight} (Landscape: ${isDisplayLandscape})`);
-    console.log(`[iOS Transform] Frame: x=${frame.left}, y=${frame.top}, w=${frame.width}, h=${frame.height}`);
-  }
+  const isPhotoLandscape = photoWidth > photoHeight;
 
   let transformedLeft: number;
   let transformedTop: number;
@@ -105,10 +91,7 @@ function transformCoordinates(
 
   switch (orientation) {
     case 'landscape-left':
-      if (isFirstBlock) console.log(`[iOS Transform] Processing case: landscape-left`);
-    
       if (isDisplayLandscape) {
-        if (isFirstBlock) console.log(`[iOS Transform] Branch: Display is Landscape -> Direct Mapping`);
         transformedLeft = frame.left;
         transformedTop = frame.top;
         transformedWidth = frame.width;
@@ -116,7 +99,7 @@ function transformCoordinates(
         effectiveWidth = photoWidth;
         effectiveHeight = photoHeight;
       } else {
-        if (isFirstBlock) console.log(`[iOS Transform] Branch: Display is Portrait -> Rotate 90 CCW`);
+        // Rotate 90° CCW to portrait
         transformedLeft = frame.top;
         transformedTop = photoWidth - frame.left - frame.width;
         transformedWidth = frame.height;
@@ -127,10 +110,7 @@ function transformCoordinates(
       break;
 
     case 'landscape-right':
-      if (isFirstBlock) console.log(`[iOS Transform] Processing case: landscape-right`);
-      
       if (isDisplayLandscape) {
-        if (isFirstBlock) console.log(`[iOS Transform] Branch: Display is Landscape -> Direct Mapping`);
         transformedLeft = frame.left;
         transformedTop = frame.top;
         transformedWidth = frame.width;
@@ -138,7 +118,7 @@ function transformCoordinates(
         effectiveWidth = photoWidth;
         effectiveHeight = photoHeight;
       } else {
-        if (isFirstBlock) console.log(`[iOS Transform] Branch: Display is Portrait -> Rotate 90 CW`);
+        // Rotate 90° CW to portrait
         transformedLeft = photoHeight - frame.top - frame.height;
         transformedTop = frame.left;
         transformedWidth = frame.height;
@@ -148,160 +128,130 @@ function transformCoordinates(
       }
       break;
 
-    case 'portrait':
-      if (isFirstBlock) console.log(`[iOS Transform] Processing case: portrait`);
-      const isPhotoLandscape = photoWidth > photoHeight;
-      
-      if (isPhotoLandscape && !isDisplayLandscape) {
-        if (isFirstBlock) console.log(`[iOS Transform] Branch: Photo Landscape & Display Portrait -> Device likely Landscape -> Direct Mapping`);
-        transformedLeft = frame.left;
-        transformedTop = frame.top;
-        transformedWidth = frame.width;
-        transformedHeight = frame.height;
-        effectiveWidth = photoWidth;
-        effectiveHeight = photoHeight;
-      } else if (isDisplayLandscape) {
-        if (isFirstBlock) console.log(`[iOS Transform] Branch: Display is Landscape`);
-        if (isPhotoLandscape) {
-          if (isFirstBlock) console.log(`[iOS Transform] Sub-Branch: Photo is also Landscape -> Direct Mapping`);
-          transformedLeft = frame.left;
-          transformedTop = frame.top;
-          transformedWidth = frame.width;
-          transformedHeight = frame.height;
-          effectiveWidth = photoWidth;
-          effectiveHeight = photoHeight;
-        } else {
-          if (isFirstBlock) console.log(`[iOS Transform] Sub-Branch: Photo is Portrait -> Rotate 90 CW`);
-          transformedLeft = photoHeight - frame.top - frame.height;
-          transformedTop = frame.left;
-          transformedWidth = frame.height;
-          transformedHeight = frame.width;
-          effectiveWidth = photoHeight;
-          effectiveHeight = photoWidth;
-        }
-      } else {
-        if (isFirstBlock) console.log(`[iOS Transform] Branch: Standard Portrait -> No Rotation`);
-        transformedLeft = frame.left;
-        transformedTop = frame.top;
-        transformedWidth = frame.width;
-        transformedHeight = frame.height;
-        effectiveWidth = photoWidth;
-        effectiveHeight = photoHeight;
-      }
-      break;
-
     case 'portrait-upside-down':
-      if (isFirstBlock) console.log(`[iOS Transform] Processing case: portrait-upside-down`);
-      
-      if (isDisplayLandscape) {
-         transformedLeft = photoWidth - frame.left - frame.width;
-         transformedTop = photoHeight - frame.top - frame.height;
-         transformedWidth = frame.width;
-         transformedHeight = frame.height;
-         effectiveWidth = photoWidth;
-         effectiveHeight = photoHeight;
+      if (isPhotoLandscape && !isDisplayLandscape) {
+        // iOS reports portrait-upside-down when tilting toward landscape-right
+        // (home button moving to the left). Treat identically to landscape-right:
+        // rotate 90° CW — no swap/remap needed downstream.
+        transformedLeft = photoHeight - frame.top - frame.height;
+        transformedTop = frame.left;
+        transformedWidth = frame.height;
+        transformedHeight = frame.width;
+        effectiveWidth = photoHeight;
+        effectiveHeight = photoWidth;
       } else {
-          transformedLeft = photoWidth - frame.left - frame.width;
-          transformedTop = photoHeight - frame.top - frame.height;
-          transformedWidth = frame.width;
-          transformedHeight = frame.height;
-          effectiveWidth = photoWidth;
-          effectiveHeight = photoHeight;
+        // True portrait-upside-down: flip 180°
+        transformedLeft = photoWidth - frame.left - frame.width;
+        transformedTop = photoHeight - frame.top - frame.height;
+        transformedWidth = frame.width;
+        transformedHeight = frame.height;
+        effectiveWidth = photoWidth;
+        effectiveHeight = photoHeight;
       }
       break;
 
+    case 'portrait':
     default:
-      if (isFirstBlock) console.log(`[iOS Transform] Processing case: DEFAULT (${orientation})`);
-      transformedLeft = frame.left;
-      transformedTop = frame.top;
-      transformedWidth = frame.width;
-      transformedHeight = frame.height;
-      effectiveWidth = photoWidth;
-      effectiveHeight = photoHeight;
+      if (isPhotoLandscape && !isDisplayLandscape) {
+        // Raw sensor is landscape, device orientation is portrait: direct mapping.
+        transformedLeft = frame.left;
+        transformedTop = frame.top;
+        transformedWidth = frame.width;
+        transformedHeight = frame.height;
+        effectiveWidth = photoWidth;
+        effectiveHeight = photoHeight;
+      } else if (isDisplayLandscape && !isPhotoLandscape) {
+        // Rotate 90° CW for portrait photo in landscape display
+        transformedLeft = photoHeight - frame.top - frame.height;
+        transformedTop = frame.left;
+        transformedWidth = frame.height;
+        transformedHeight = frame.width;
+        effectiveWidth = photoHeight;
+        effectiveHeight = photoWidth;
+      } else {
+        // Same orientation: direct mapping
+        transformedLeft = frame.left;
+        transformedTop = frame.top;
+        transformedWidth = frame.width;
+        transformedHeight = frame.height;
+        effectiveWidth = photoWidth;
+        effectiveHeight = photoHeight;
+      }
       break;
   }
 
-  if (isFirstBlock) {
-    console.log(`[iOS Transform] POST-ROTATION State:`);
-    console.log(`  Transformed Rect: x=${transformedLeft}, y=${transformedTop}, w=${transformedWidth}, h=${transformedHeight}`);
-    console.log(`  Effective Dims: ${effectiveWidth}x${effectiveHeight}`);
-  }
-
+  // For portrait with landscape raw sensor in portrait display,
+  // swap display dimensions to match the landscape coordinate space.
+  // (portrait-upside-down+landscape is handled like landscape-right — no swap needed.)
   let actualDisplayWidth = displayWidth;
   let actualDisplayHeight = displayHeight;
-  const isPhotoLandscape = photoWidth > photoHeight;
-  
-  if ((orientation === 'portrait' || orientation === 'portrait-upside-down') && isPhotoLandscape && !isDisplayLandscape) {
+  if (orientation === 'portrait' && isPhotoLandscape && !isDisplayLandscape) {
     actualDisplayWidth = displayHeight;
     actualDisplayHeight = displayWidth;
-    if (isFirstBlock) console.log(`[iOS] Swapped display dims for landscape device (${orientation}): ${actualDisplayWidth}x${actualDisplayHeight}`);
   }
 
   const photoAspect = effectiveWidth / effectiveHeight;
   const displayAspect = actualDisplayWidth / actualDisplayHeight;
-  
+
   let cropOffsetX = 0;
   let cropOffsetY = 0;
   let visibleWidth = effectiveWidth;
   let visibleHeight = effectiveHeight;
-  
+
   if (photoAspect > displayAspect) {
     visibleWidth = effectiveHeight * displayAspect;
     cropOffsetX = (effectiveWidth - visibleWidth) / 2;
-    if (isFirstBlock) console.log(`[iOS Transform] CROP: Photo wider. cropOffsetX=${cropOffsetX.toFixed(1)}`);
   } else if (photoAspect < displayAspect) {
     visibleHeight = effectiveWidth / displayAspect;
     cropOffsetY = (effectiveHeight - visibleHeight) / 2;
-    if (isFirstBlock) console.log(`[iOS Transform] CROP: Photo taller. cropOffsetY=${cropOffsetY.toFixed(1)}`);
   }
-  
+
   const scaleX = actualDisplayWidth / visibleWidth;
   const scaleY = actualDisplayHeight / visibleHeight;
 
-  const adjustedLeft = transformedLeft - cropOffsetX;
-  const adjustedTop = transformedTop - cropOffsetY;
-  
-  let finalX = adjustedLeft * scaleX;
-  let finalY = adjustedTop * scaleY;
+  let finalX = (transformedLeft - cropOffsetX) * scaleX;
+  let finalY = (transformedTop - cropOffsetY) * scaleY;
   let finalWidth = transformedWidth * scaleX;
   let finalHeight = transformedHeight * scaleY;
 
-  if ((orientation === 'portrait' || orientation === 'portrait-upside-down') && isPhotoLandscape && !isDisplayLandscape) {
-     if (isFirstBlock) console.log(`[iOS] Mapping Landscape coordinates back to Portrait container...`);
-     const oldX = finalX;
-     const oldY = finalY;
-     const oldW = finalWidth;
-     const oldH = finalHeight;
-     
-     if (orientation === 'portrait-upside-down') {
-         finalX = oldY;
-         finalY = displayHeight - oldX - oldW;
-         finalWidth = oldH;
-         finalHeight = oldW;
-     } else {
-        finalX = displayWidth - oldY - oldH;
-        finalY = oldX;
-        finalWidth = oldH;
-        finalHeight = oldW;
-     }
-
-     if (isFirstBlock) console.log(`[iOS] Rotated Result: x=${finalX.toFixed(1)}, y=${finalY.toFixed(1)}`);
+  // Map landscape-space coordinates back to portrait display space.
+  // Only for portrait + landscape raw sensor in portrait display.
+  // (portrait-upside-down+landscape uses the landscape-right path — no remap needed.)
+  if (orientation === 'portrait' && isPhotoLandscape && !isDisplayLandscape) {
+    const oldX = finalX;
+    const oldY = finalY;
+    const oldW = finalWidth;
+    const oldH = finalHeight;
+    finalX = displayWidth - oldY - oldH;
+    finalY = oldX;
+    finalWidth = oldH;
+    finalHeight = oldW;
   }
 
-  if (isFirstBlock) {
-    console.log(`[iOS Transform] SCALING:`);
-    console.log(`  ScaleX: ${scaleX.toFixed(4)}, ScaleY: ${scaleY.toFixed(4)}`);
-    console.log(`  Visible Dims: ${visibleWidth.toFixed(1)}x${visibleHeight.toFixed(1)}`);
-    console.log(`  Final Result: x=${finalX.toFixed(1)}, y=${finalY.toFixed(1)}, w=${finalWidth.toFixed(1)}, h=${finalHeight.toFixed(1)}`);
-    console.log(`[iOS Transform] =============================================`);
-  }
+  return { x: finalX, y: finalY, width: finalWidth, height: finalHeight };
+}
 
-  return {
-    x: finalX,
-    y: finalY,
-    width: finalWidth,
-    height: finalHeight,
-  };
+// Run OCR for every supported script sequentially and return all blocks merged
+// into a single result object, so callers can treat it as one recognition call.
+const ALL_SCRIPTS = [
+  TextRecognitionScript.LATIN,
+  TextRecognitionScript.CHINESE,
+  TextRecognitionScript.JAPANESE,
+  TextRecognitionScript.KOREAN,
+  TextRecognitionScript.DEVANAGARI,
+];
+
+async function recognizeAllScripts(imagePath: string): Promise<{ blocks: TextBlock[] }> {
+  const allBlocks: TextBlock[] = [];
+  for (const script of ALL_SCRIPTS) {
+    try {
+      const result: TextRecognitionResult = await TextRecognition.recognize(imagePath, script);
+      allBlocks.push(...result.blocks);
+    } catch (err) {
+      console.log(`[OCR] Script ${script} failed:`, err);
+    }
+  }
+  return { blocks: allBlocks };
 }
 
 export default function ScanScreen() {
@@ -311,6 +261,8 @@ export default function ScanScreen() {
   const cameraRef = useRef<Camera>(null);
   const overlayRef = useRef<any>(null);
   const isFocused = useIsFocused();
+
+  const { mode } = useAuth();
 
   // ── Paywall gate ──
   const {
@@ -333,8 +285,28 @@ export default function ScanScreen() {
   // ── Freeze-zoom state ──────────────────────────────────────────────────────
   const [isFrozen, setIsFrozen] = useState(false);
   const [frozenPhotoUri, setFrozenPhotoUri] = useState<string | null>(null);
+  const [frozenPhotoOrientation, setFrozenPhotoOrientation] = useState<string | undefined>(undefined);
   const [frozenBoxes, setFrozenBoxes] = useState<BoundingBox[]>([]);
   const isFreezing = useRef(false);
+
+  // Incrementing this key forces the OCR polling loop to fully tear down and
+  // restart — equivalent to navigating away and back to the scan tab.
+  const [ocrKey, setOcrKey] = useState(0);
+
+  // Called by MenuInteractionOverlay when the results modal is dismissed.
+  // Fully resets all scan/freeze state and force-restarts the OCR loop so the
+  // camera is guaranteed to resume scanning immediately.
+  const handleResultClose = useCallback(() => {
+    overlayRef.current?.cancelCurrentOperation?.();
+    setIsFrozen(false);
+    setFrozenPhotoUri(null);
+    setFrozenPhotoOrientation(undefined);
+    setFrozenBoxes([]);
+    setBoundingBoxes([]);
+    isFreezing.current = false;
+    // Bump the key to force the OCR useEffect to re-run from scratch.
+    setOcrKey(k => k + 1);
+  }, []);
 
   // Pause camera when app is backgrounded
   useEffect(() => {
@@ -354,6 +326,8 @@ export default function ScanScreen() {
     }
   }, [profile?.scans, hasPermission, requestPermission]);
 
+  // Edge-case: nothing to do here now that the paywall is always shown when scans === 0.
+
   const isActive = isFocused && appActive;
 
   // Use refs for values accessed in the polling loop to avoid stale closures
@@ -361,6 +335,7 @@ export default function ScanScreen() {
   const statusRef = useRef(status);
   const cancelledRef = useRef(false);
   const isFrozenRef = useRef(isFrozen);
+  const ocrDebugLastLogRef = useRef(0); // timestamp of last OCR debug log
 
   useEffect(() => { cameraLayoutRef.current = cameraLayout; }, [cameraLayout]);
   useEffect(() => { statusRef.current = status; }, [status]);
@@ -386,7 +361,9 @@ export default function ScanScreen() {
         return;
       }
 
-      if (!cameraRef.current || layout.width === 0 || statusRef.current !== 'idle') {
+      // Also skip if a freeze capture is in-flight — two concurrent takePhoto calls
+      // can cause a camera error on iOS.
+      if (!cameraRef.current || layout.width === 0 || statusRef.current !== 'idle' || isFreezing.current) {
         scheduleNext();
         return;
       }
@@ -400,12 +377,11 @@ export default function ScanScreen() {
 
         if (cancelledRef.current) return;
 
-        const result: TextRecognitionResult = await TextRecognition.recognize(
-          `file://${photo.path}`
-        );
+        const result = await recognizeAllScripts(`file://${photo.path}`);
 
         if (cancelledRef.current) return;
 
+        const rawCount = result.blocks.filter((b: TextBlock) => b.frame != null).length;
         const boxes: BoundingBox[] = result.blocks
           .filter((block: TextBlock) => block.frame != null)
           .map((block: TextBlock) => {
@@ -416,7 +392,6 @@ export default function ScanScreen() {
               photo,
               layout.width,
               layout.height,
-              false
             );
 
             return {
@@ -424,6 +399,21 @@ export default function ScanScreen() {
               text: block.text
             };
           });
+
+        // Debug: log raw ML Kit count vs displayed count, plus out-of-bounds boxes.
+        // Throttled to once per 2s so logs stay readable while scanning.
+        const now = Date.now();
+        if (now - ocrDebugLastLogRef.current > 2000) {
+          ocrDebugLastLogRef.current = now;
+          const outOfBounds = boxes.filter(
+            b => b.x < 0 || b.y < 0 || b.x + b.width > layout.width || b.y + b.height > layout.height
+          ).length;
+          console.log(
+            `[OCR] raw=${rawCount} displayed=${boxes.length} oob=${outOfBounds}` +
+            ` photo=${photo.width}x${photo.height} orient=${photo.orientation}` +
+            ` display=${layout.width.toFixed(0)}x${layout.height.toFixed(0)}`
+          );
+        }
 
         if (!cancelledRef.current) {
           setBoundingBoxes(boxes);
@@ -442,7 +432,7 @@ export default function ScanScreen() {
     return () => {
       cancelledRef.current = true;
     };
-  }, [hasPermission, device, isCameraReady, isActive]);
+  }, [hasPermission, device, isCameraReady, isActive, ocrKey]);
 
   const onCameraLayout = (event: any) => {
     const { width, height } = event.nativeEvent.layout;
@@ -452,10 +442,16 @@ export default function ScanScreen() {
   // ── Freeze / unfreeze helpers ─────────────────────────────────────────────
   const handleFreezeToggle = async () => {
     if (isFrozen) {
-      // Return to live view
+      // Return to live view — clear stale bounding boxes so the live OCR
+      // loop starts fresh instead of briefly showing leftover freeze boxes.
+      // Also cancel any in-flight identify/image-gen so the OCR polling guard
+      // (statusRef.current !== 'idle') doesn't permanently block new OCR ticks.
+      overlayRef.current?.cancelCurrentOperation?.();
       setIsFrozen(false);
       setFrozenPhotoUri(null);
+      setFrozenPhotoOrientation(undefined);
       setFrozenBoxes([]);
+      setBoundingBoxes([]);
       isFreezing.current = false;
       return;
     }
@@ -474,6 +470,8 @@ export default function ScanScreen() {
       // as a placeholder so the user sees something right away.
       setFrozenBoxes([...boundingBoxes]);
       setFrozenPhotoUri(`file://${photo.path}`);
+      setFrozenPhotoOrientation(photo.orientation ?? undefined);
+      console.log(`[Freeze] photo ${photo.width}x${photo.height} orientation=${photo.orientation} display=${layout.width}x${layout.height}`);
       setIsFrozen(true);
 
       // Re-run OCR on the ENTIRE frozen photo to get finer, line-level boxes.
@@ -481,9 +479,7 @@ export default function ScanScreen() {
       // user zooms in — what was one merged paragraph block becomes individual
       // selectable lines.
       try {
-        const ocrResult: TextRecognitionResult = await TextRecognition.recognize(
-          `file://${photo.path}`
-        );
+        const ocrResult = await recognizeAllScripts(`file://${photo.path}`);
 
         const lineBoxes: BoundingBox[] = [];
         ocrResult.blocks.forEach((block: TextBlock) => {
@@ -497,7 +493,6 @@ export default function ScanScreen() {
                   photo,
                   layout.width,
                   layout.height,
-                  false
                 );
                 lineBoxes.push({ ...transformed, text: line.text });
               }
@@ -509,7 +504,6 @@ export default function ScanScreen() {
               photo,
               layout.width,
               layout.height,
-              false
             );
             lineBoxes.push({ ...transformed, text: block.text });
           }
@@ -523,6 +517,10 @@ export default function ScanScreen() {
       }
     } catch (e) {
       console.log('[FreezeZoom] Capture error:', e);
+    } finally {
+      // Always release the freeze lock so a subsequent freeze attempt is never
+      // blocked. The unfreeze path also clears this, but using finally here
+      // ensures it resets even on the success path.
       isFreezing.current = false;
     }
   };
@@ -541,8 +539,10 @@ export default function ScanScreen() {
     );
   }
 
-  // Gate access to the scan page: show paywall when user has 0 scans
-  if (needsPaywall) {
+  // Gate access to the scan page: show paywall when user has 0 scans.
+  // Defer until the result popup is closed so the user can finish reading
+  // the dish detail before being interrupted by the paywall.
+  if (needsPaywall && status !== 'complete') {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.dark }}>
         <StatusBar style="light" />
@@ -684,6 +684,7 @@ export default function ScanScreen() {
             boundingBoxes={frozenBoxes}
             containerWidth={cameraLayout.width}
             containerHeight={cameraLayout.height}
+            photoOrientation={frozenPhotoOrientation}
             onBoxTap={(windowX, windowY) => {
               overlayRef.current?.identifyAtPoint(windowX, windowY);
             }}
@@ -701,6 +702,7 @@ export default function ScanScreen() {
             ref={overlayRef}
             status={status}
             setStatus={setStatus}
+            onResultClose={handleResultClose}
             textBlocks={(isFrozen ? frozenBoxes : boundingBoxes).map(b => ({
               text: b.text,
               frame: { x: b.x, y: b.y, width: b.width, height: b.height }

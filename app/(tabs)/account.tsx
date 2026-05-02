@@ -17,15 +17,15 @@ import MyPlanContent from '../../components/MyPlanContent';
 import { Button as Btn, Colors, Fonts, FontSize, Spacing } from '../../constants/DesignSystem';
 import { useAuth } from '../../contexts/AuthContext';
 
-type ConfirmModal = 'logout' | 'delete' | null;
+type ConfirmModal = 'clear-data' | null;
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
-  const { userId, signOut, isSignedIn } = useAuth();
+  const { effectiveUserId, resetGuestState } = useAuth();
 
   const [modal, setModal] = useState<ConfirmModal>(null);
   const [planOpen, setPlanOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const planAnim = useRef(new Animated.Value(0)).current;
   const [contentHeight, setContentHeight] = useState(0);
@@ -50,33 +50,27 @@ export default function AccountScreen() {
     outputRange: ['0deg', '180deg'],
   });
 
-  const handleLogOut = async () => {
-    setModal(null);
-    await signOut();
-    router.replace('/');
-  };
-
-  const handleDeleteAccount = async () => {
-    if (!userId) return;
-    setIsDeleting(true);
+  const handleClearData = async () => {
+    if (!effectiveUserId) return;
+    setIsClearing(true);
     try {
       const response = await fetch(
-        `/api/delete-profile?user_id=${encodeURIComponent(userId)}`,
+        `/api/delete-profile?user_id=${encodeURIComponent(effectiveUserId)}`,
         { method: 'DELETE' },
       );
       const json = await response.json();
       if (!response.ok) {
-        Alert.alert('Error', json.error ?? 'Failed to delete account. Please try again.');
+        Alert.alert('Error', json.error ?? 'Failed to clear data. Please try again.');
         return;
       }
     } catch (err: any) {
-      Alert.alert('Error', err?.message ?? 'Failed to delete account. Please try again.');
+      Alert.alert('Error', err?.message ?? 'Failed to clear data. Please try again.');
       return;
     } finally {
-      setIsDeleting(false);
+      setIsClearing(false);
       setModal(null);
     }
-    await signOut();
+    await resetGuestState();
     router.replace('/');
   };
 
@@ -120,93 +114,39 @@ export default function AccountScreen() {
             </Animated.View>
           </View>
 
-          {isSignedIn ? (
-            <>
-              {/* (b) Log Out */}
-              <Pressable style={styles.card} onPress={() => setModal('logout')}>
-                <View style={styles.cardRow}>
-                  <View style={styles.cardLeft}>
-                    <Ionicons name="log-out-outline" size={20} color={Colors.textOnDark} />
-                    <Text style={styles.cardTitle}>Log Out</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={Colors.textOnDark} style={styles.chevron} />
-                </View>
-              </Pressable>
-
-              {/* (c) Delete Account */}
-              <Pressable style={[styles.card, styles.cardDanger]} onPress={() => setModal('delete')}>
-                <View style={styles.cardRow}>
-                  <View style={styles.cardLeft}>
-                    <Ionicons name="trash-outline" size={20} color={Colors.textOnDark} />
-                    <Text style={styles.cardTitle}>Delete Account</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={Colors.textOnDark} style={styles.chevron} />
-                </View>
-              </Pressable>
-            </>
-          ) : (
-            <View style={styles.card}>
-              <View style={styles.cardRow}>
-                <View style={styles.cardLeft}>
-                  <Ionicons name="person-outline" size={20} color={Colors.textOnDark} />
-                  <Text style={styles.cardTitle}>Guest mode active</Text>
-                </View>
+          {/* (b) Clear My Data */}
+          <Pressable style={[styles.card, styles.cardDanger]} onPress={() => setModal('clear-data')}>
+            <View style={styles.cardRow}>
+              <View style={styles.cardLeft}>
+                <Ionicons name="trash-outline" size={20} color={Colors.textOnDark} />
+                <Text style={styles.cardTitle}>Clear My Data</Text>
               </View>
-              <View style={styles.guestHintWrap}>
-                <Text style={styles.guestHintText}>
-                  Sign in from the home screen to sync purchases across devices and manage your account.
-                </Text>
-                <Pressable
-                  style={styles.guestSignInBtn}
-                  onPress={() => router.replace('/')}
-                >
-                  <Text style={styles.guestSignInText}>Go to Sign-In</Text>
-                </Pressable>
-              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textOnDark} style={styles.chevron} />
             </View>
-          )}
+          </Pressable>
 
         </View>
       </ScrollView>
 
-      {/* ── Log Out confirmation ──────────────────────────── */}
-      <Modal visible={modal === 'logout'} transparent animationType="fade">
-        <View style={styles.overlay}>
-          <View style={styles.modalBox}>
-            <Pressable style={styles.closeBtn} onPress={() => setModal(null)}>
-              <Text style={styles.closeBtnText}>✕</Text>
-            </Pressable>
-            <Ionicons name="log-out-outline" size={32} color={Colors.textOnLight} style={styles.modalIcon} />
-            <Text style={styles.modalTitle}>Log Out?</Text>
-            <Text style={styles.modalBody}>
-              You&apos;ll need to sign in again to use MenuPic AI.
-            </Text>
-            <Pressable style={styles.modalActionBtn} onPress={handleLogOut}>
-              <Text style={styles.modalActionText}>Log Out</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── Delete Account confirmation ───────────────────── */}
-      <Modal visible={modal === 'delete'} transparent animationType="fade">
+      {/* ── Clear My Data confirmation ───────────────────── */}
+      <Modal visible={modal === 'clear-data'} transparent animationType="fade">
         <View style={styles.overlay}>
           <View style={styles.modalBox}>
             <Pressable style={styles.closeBtn} onPress={() => setModal(null)}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>
             <Ionicons name="trash-outline" size={32} color={Colors.error} style={styles.modalIcon} />
-            <Text style={styles.modalTitle}>Delete Account?</Text>
+            <Text style={styles.modalTitle}>Clear My Data?</Text>
             <Text style={styles.modalBody}>
-              This permanently removes your profile and all scan credits. This action cannot be undone.
+              This permanently removes your scan credits and profile. You will start fresh as a new guest. This action cannot be undone.
             </Text>
             <Pressable
               style={[styles.modalActionBtn, { backgroundColor: Colors.error }]}
-              onPress={handleDeleteAccount}
-              disabled={isDeleting}
+              onPress={handleClearData}
+              disabled={isClearing}
             >
               <Text style={styles.modalActionText}>
-                {isDeleting ? 'Deleting…' : 'Delete Account'}
+                {isClearing ? 'Clearing…' : 'Clear My Data'}
               </Text>
             </Pressable>
           </View>
@@ -294,31 +234,6 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: Colors.dividerDark,
-  },
-  guestHintWrap: {
-    paddingHorizontal: Spacing.sm,
-    paddingBottom: Spacing.sm,
-  },
-  guestHintText: {
-    color: Colors.textOnDark,
-    fontSize: FontSize.small,
-    fontFamily: Fonts.regular,
-    opacity: 0.7,
-    lineHeight: 18,
-  },
-  guestSignInBtn: {
-    marginTop: Spacing.sm,
-    height: Btn.height,
-    borderRadius: Btn.borderRadius,
-    borderWidth: 1,
-    borderColor: Colors.dividerDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  guestSignInText: {
-    color: Colors.textOnDark,
-    fontSize: FontSize.normal,
-    fontFamily: Fonts.bold,
   },
   // ── Modals ────────────────────────────────────────────
   overlay: {
