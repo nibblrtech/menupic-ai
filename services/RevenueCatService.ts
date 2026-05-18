@@ -20,25 +20,25 @@ const RC_ANDROID_API_KEY = 'test_ycfBeqJBBuSclaJeltyNSeruYRp';
 // One-time consumable purchases — no subscriptions.
 export const Products = {
   /** Starter pack — 10 scans — $1.99 */
-  STARTER: 'MENUPIC_IAP_STARTER',
+  STARTER: 'menupicstarter',
   /** Popular pack — 30 scans — $4.99 */
-  POPULAR: 'MENUPIC_IAP_POPULAR',
+  POPULAR: 'menupicpopular',
   /** Traveller pack — 75 scans — $9.99 */
-  TRAVELLER: 'MENUPIC_IAP_TRAVELLER',
+  TRAVELLER: 'menupictraveller',
 } as const;
 
 /** Number of scans credited per IAP product. */
 export const ScansPerProduct: Record<string, number> = {
-  MENUPIC_IAP_STARTER: 10,
-  MENUPIC_IAP_POPULAR: 30,
-  MENUPIC_IAP_TRAVELLER: 75,
+  'menupicstarter': 10,
+  'menupicpopular': 30,
+  'menupictraveller': 75,
 };
 
 /** Fallback display prices (actual prices come from the store via RC package). */
 export const ProductPrices = {
-  MENUPIC_IAP_STARTER: '$1.99',
-  MENUPIC_IAP_POPULAR: '$4.99',
-  MENUPIC_IAP_TRAVELLER: '$9.99',
+  'menupicstarter': '$1.99',
+  'menupicpopular': '$4.99',
+  'menupictraveller': '$9.99',
 } as const;
 
 // ─── Offering identifiers ───────────────────────────────────────────────────

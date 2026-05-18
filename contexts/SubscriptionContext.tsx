@@ -9,9 +9,9 @@
  *  • isPurchasing         – true during a purchase flow
  *  • offerings            – current RevenueCat offerings
  *  • menuPicOffering      – the specific MENUPICAIOFFERING offering object
- *  • starterPackage       – the MENUPIC_IAP_STARTER RC package (or null)
- *  • popularPackage       – the MENUPIC_IAP_POPULAR RC package (or null)
- *  • travellerPackage     – the MENUPIC_IAP_TRAVELLER RC package (or null)
+ *  • starterPackage       – the menupicstarter RC package (or null)
+ *  • popularPackage       – the menupicpopular RC package (or null)
+ *  • travellerPackage     – the menupictraveller RC package (or null)
  *  • purchaseStarter()    – buy 10 scans ($1.99)
  *  • purchasePopular()    – buy 30 scans ($4.99)
  *  • purchaseTraveller()  – buy 75 scans ($9.99)

@@ -17,9 +17,9 @@ import { getClientIp, isValidTrackedUserId } from './_identity';
 import { checkRateLimit } from './_rateLimit';
 
 const ALLOWED_PRODUCT_SCAN_CREDITS: Record<string, number> = {
-  MENUPIC_IAP_STARTER: 10,
-  MENUPIC_IAP_POPULAR: 30,
-  MENUPIC_IAP_TRAVELLER: 75,
+  'menupicstarter': 10,
+  'menupicpopular': 30,
+  'menupictraveller': 75,
 };
 
 export async function POST(request: Request) {

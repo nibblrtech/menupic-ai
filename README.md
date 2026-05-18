@@ -109,4 +109,5 @@ The original Gradle error was because you don't have the Android SDK installed l
 Supabase: see `SECRETS.local.md` (not committed to git)
 
 
-
+to build the google play console namespace verification file, run
+"npx eas build --profile namespace-verify --platform android"

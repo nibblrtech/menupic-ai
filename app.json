@@ -37,6 +37,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
+        "com.android.vending.BILLING",
         "android.permission.CAMERA",
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE"
@@ -88,7 +89,8 @@
       "expo-apple-authentication",
       "@react-native-google-signin/google-signin",
       "expo-secure-store",
-      "./plugins/withAdiRegistration"
+      "./plugins/withAdiRegistration",
+      "./plugins/withPhoneOnly"
     ],
     "experiments": {
       "typedRoutes": true,
