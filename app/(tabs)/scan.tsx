@@ -35,10 +35,13 @@ const OCR_INTERVAL_MS = 1000;
 
 // Transform ML Kit bounding-box coordinates into display space.
 //
-// Platform differences:
-// - iOS: Photos are captured in landscape orientation internally (raw sensor pixels).
-//   ML Kit processes raw pixels, so coordinates need to be rotated based on orientation.
-// - Android: takeSnapshot captures in current preview orientation, coordinates align with display.
+// The Camera uses outputOrientation="preview" so the EXIF orientation is always
+// portrait, but iOS sensor pixels are always stored landscape in the JPEG file
+// (photoWidth > photoHeight). ML Kit reads those raw landscape pixels and returns
+// landscape-space coordinates, which must be rotated 90° into portrait display space.
+//
+// On Android, takeSnapshot returns portrait-oriented pixels directly, so only
+// a simple cover-crop scale is needed.
 function transformCoordinates(
   frame: { left: number; top: number; width: number; height: number },
   photo: PhotoFile,
@@ -47,188 +50,76 @@ function transformCoordinates(
 ): { x: number; y: number; width: number; height: number } {
   const photoWidth = photo.width;
   const photoHeight = photo.height;
-  const orientation = photo.orientation;
 
-  // Android: ML Kit reads EXIF orientation and returns coordinates in display space.
-  // photo.width/height are raw sensor dimensions, so we need to handle the mismatch.
-  if (Platform.OS === 'android') {
-    const isDisplayPortrait = displayHeight > displayWidth;
-    const isPhotoPortrait = photoHeight > photoWidth;
+  if (photoWidth > photoHeight) {
+    // iOS: raw sensor pixels are landscape. Map ML Kit landscape coords to portrait
+    // display space. The portrait display maps onto the landscape image like this:
+    //   landscape display "width"  = displayHeight  (portrait height)
+    //   landscape display "height" = displayWidth   (portrait width)
+    const lsDisplayW = displayHeight;
+    const lsDisplayH = displayWidth;
 
-    if (isDisplayPortrait === isPhotoPortrait) {
-      const scaleX = displayWidth / photoWidth;
-      const scaleY = displayHeight / photoHeight;
-      return {
-        x: frame.left * scaleX,
-        y: frame.top * scaleY,
-        width: frame.width * scaleX,
-        height: frame.height * scaleY,
-      };
+    const photoAspect = photoWidth / photoHeight;
+    const displayAspect = lsDisplayW / lsDisplayH;
+
+    let cropOffsetX = 0;
+    let cropOffsetY = 0;
+    let visibleWidth = photoWidth;
+    let visibleHeight = photoHeight;
+
+    if (photoAspect > displayAspect) {
+      visibleWidth = photoHeight * displayAspect;
+      cropOffsetX = (photoWidth - visibleWidth) / 2;
+    } else if (photoAspect < displayAspect) {
+      visibleHeight = photoWidth / displayAspect;
+      cropOffsetY = (photoHeight - visibleHeight) / 2;
     }
 
-    const scaleX = displayWidth / photoHeight;
-    const scaleY = displayHeight / photoWidth;
+    const scaleX = lsDisplayW / visibleWidth;
+    const scaleY = lsDisplayH / visibleHeight;
+
+    // Scale into landscape display space
+    const lsX = (frame.left - cropOffsetX) * scaleX;
+    const lsY = (frame.top - cropOffsetY) * scaleY;
+    const lsW = frame.width * scaleX;
+    const lsH = frame.height * scaleY;
+
+    // Rotate 90° from landscape display space into portrait display space
     return {
-      x: frame.top * scaleX,
-      y: (photoWidth - frame.left - frame.width) * scaleY,
-      width: frame.height * scaleX,
-      height: frame.width * scaleY,
+      x: displayWidth - lsY - lsH,
+      y: lsX,
+      width: lsH,
+      height: lsW,
     };
   }
 
-  // iOS: photo.width/height are raw sensor dimensions.
-  // ML Kit processes raw pixels without applying EXIF rotation.
-  // We rotate and scale coordinates based on the device orientation.
-  const isDisplayLandscape = displayWidth > displayHeight;
-  const isPhotoLandscape = photoWidth > photoHeight;
-
-  let transformedLeft: number;
-  let transformedTop: number;
-  let transformedWidth: number;
-  let transformedHeight: number;
-  let effectiveWidth: number;
-  let effectiveHeight: number;
-
-  switch (orientation) {
-    case 'landscape-left':
-      if (isDisplayLandscape) {
-        transformedLeft = frame.left;
-        transformedTop = frame.top;
-        transformedWidth = frame.width;
-        transformedHeight = frame.height;
-        effectiveWidth = photoWidth;
-        effectiveHeight = photoHeight;
-      } else {
-        // Rotate 90° CCW to portrait
-        transformedLeft = frame.top;
-        transformedTop = photoWidth - frame.left - frame.width;
-        transformedWidth = frame.height;
-        transformedHeight = frame.width;
-        effectiveWidth = photoHeight;
-        effectiveHeight = photoWidth;
-      }
-      break;
-
-    case 'landscape-right':
-      if (isDisplayLandscape) {
-        transformedLeft = frame.left;
-        transformedTop = frame.top;
-        transformedWidth = frame.width;
-        transformedHeight = frame.height;
-        effectiveWidth = photoWidth;
-        effectiveHeight = photoHeight;
-      } else {
-        // Rotate 90° CW to portrait
-        transformedLeft = photoHeight - frame.top - frame.height;
-        transformedTop = frame.left;
-        transformedWidth = frame.height;
-        transformedHeight = frame.width;
-        effectiveWidth = photoHeight;
-        effectiveHeight = photoWidth;
-      }
-      break;
-
-    case 'portrait-upside-down':
-      if (isPhotoLandscape && !isDisplayLandscape) {
-        // iOS reports portrait-upside-down when tilting toward landscape-right
-        // (home button moving to the left). Treat identically to landscape-right:
-        // rotate 90° CW — no swap/remap needed downstream.
-        transformedLeft = photoHeight - frame.top - frame.height;
-        transformedTop = frame.left;
-        transformedWidth = frame.height;
-        transformedHeight = frame.width;
-        effectiveWidth = photoHeight;
-        effectiveHeight = photoWidth;
-      } else {
-        // True portrait-upside-down: flip 180°
-        transformedLeft = photoWidth - frame.left - frame.width;
-        transformedTop = photoHeight - frame.top - frame.height;
-        transformedWidth = frame.width;
-        transformedHeight = frame.height;
-        effectiveWidth = photoWidth;
-        effectiveHeight = photoHeight;
-      }
-      break;
-
-    case 'portrait':
-    default:
-      if (isPhotoLandscape && !isDisplayLandscape) {
-        // Raw sensor is landscape, device orientation is portrait: direct mapping.
-        transformedLeft = frame.left;
-        transformedTop = frame.top;
-        transformedWidth = frame.width;
-        transformedHeight = frame.height;
-        effectiveWidth = photoWidth;
-        effectiveHeight = photoHeight;
-      } else if (isDisplayLandscape && !isPhotoLandscape) {
-        // Rotate 90° CW for portrait photo in landscape display
-        transformedLeft = photoHeight - frame.top - frame.height;
-        transformedTop = frame.left;
-        transformedWidth = frame.height;
-        transformedHeight = frame.width;
-        effectiveWidth = photoHeight;
-        effectiveHeight = photoWidth;
-      } else {
-        // Same orientation: direct mapping
-        transformedLeft = frame.left;
-        transformedTop = frame.top;
-        transformedWidth = frame.width;
-        transformedHeight = frame.height;
-        effectiveWidth = photoWidth;
-        effectiveHeight = photoHeight;
-      }
-      break;
-  }
-
-  // For portrait with landscape raw sensor in portrait display,
-  // swap display dimensions to match the landscape coordinate space.
-  // (portrait-upside-down+landscape is handled like landscape-right — no swap needed.)
-  let actualDisplayWidth = displayWidth;
-  let actualDisplayHeight = displayHeight;
-  if (orientation === 'portrait' && isPhotoLandscape && !isDisplayLandscape) {
-    actualDisplayWidth = displayHeight;
-    actualDisplayHeight = displayWidth;
-  }
-
-  const photoAspect = effectiveWidth / effectiveHeight;
-  const displayAspect = actualDisplayWidth / actualDisplayHeight;
+  // Android: takeSnapshot returns portrait-oriented pixels matching the preview.
+  // ML Kit returns portrait-space coordinates — simple cover-crop scale suffices.
+  const photoAspect = photoWidth / photoHeight;
+  const displayAspect = displayWidth / displayHeight;
 
   let cropOffsetX = 0;
   let cropOffsetY = 0;
-  let visibleWidth = effectiveWidth;
-  let visibleHeight = effectiveHeight;
+  let visibleWidth = photoWidth;
+  let visibleHeight = photoHeight;
 
   if (photoAspect > displayAspect) {
-    visibleWidth = effectiveHeight * displayAspect;
-    cropOffsetX = (effectiveWidth - visibleWidth) / 2;
+    visibleWidth = photoHeight * displayAspect;
+    cropOffsetX = (photoWidth - visibleWidth) / 2;
   } else if (photoAspect < displayAspect) {
-    visibleHeight = effectiveWidth / displayAspect;
-    cropOffsetY = (effectiveHeight - visibleHeight) / 2;
+    visibleHeight = photoWidth / displayAspect;
+    cropOffsetY = (photoHeight - visibleHeight) / 2;
   }
 
-  const scaleX = actualDisplayWidth / visibleWidth;
-  const scaleY = actualDisplayHeight / visibleHeight;
+  const scaleX = displayWidth / visibleWidth;
+  const scaleY = displayHeight / visibleHeight;
 
-  let finalX = (transformedLeft - cropOffsetX) * scaleX;
-  let finalY = (transformedTop - cropOffsetY) * scaleY;
-  let finalWidth = transformedWidth * scaleX;
-  let finalHeight = transformedHeight * scaleY;
-
-  // Map landscape-space coordinates back to portrait display space.
-  // Only for portrait + landscape raw sensor in portrait display.
-  // (portrait-upside-down+landscape uses the landscape-right path — no remap needed.)
-  if (orientation === 'portrait' && isPhotoLandscape && !isDisplayLandscape) {
-    const oldX = finalX;
-    const oldY = finalY;
-    const oldW = finalWidth;
-    const oldH = finalHeight;
-    finalX = displayWidth - oldY - oldH;
-    finalY = oldX;
-    finalWidth = oldH;
-    finalHeight = oldW;
-  }
-
-  return { x: finalX, y: finalY, width: finalWidth, height: finalHeight };
+  return {
+    x: (frame.left - cropOffsetX) * scaleX,
+    y: (frame.top - cropOffsetY) * scaleY,
+    width: frame.width * scaleX,
+    height: frame.height * scaleY,
+  };
 }
 
 // Run OCR for every supported script sequentially and return all blocks merged
@@ -285,7 +176,6 @@ export default function ScanScreen() {
   // ── Freeze-zoom state ──────────────────────────────────────────────────────
   const [isFrozen, setIsFrozen] = useState(false);
   const [frozenPhotoUri, setFrozenPhotoUri] = useState<string | null>(null);
-  const [frozenPhotoOrientation, setFrozenPhotoOrientation] = useState<string | undefined>(undefined);
   const [frozenBoxes, setFrozenBoxes] = useState<BoundingBox[]>([]);
   const isFreezing = useRef(false);
 
@@ -300,7 +190,6 @@ export default function ScanScreen() {
     overlayRef.current?.cancelCurrentOperation?.();
     setIsFrozen(false);
     setFrozenPhotoUri(null);
-    setFrozenPhotoOrientation(undefined);
     setFrozenBoxes([]);
     setBoundingBoxes([]);
     isFreezing.current = false;
@@ -410,7 +299,7 @@ export default function ScanScreen() {
           ).length;
           console.log(
             `[OCR] raw=${rawCount} displayed=${boxes.length} oob=${outOfBounds}` +
-            ` photo=${photo.width}x${photo.height} orient=${photo.orientation}` +
+            ` photo=${photo.width}x${photo.height}` +
             ` display=${layout.width.toFixed(0)}x${layout.height.toFixed(0)}`
           );
         }
@@ -449,7 +338,6 @@ export default function ScanScreen() {
       overlayRef.current?.cancelCurrentOperation?.();
       setIsFrozen(false);
       setFrozenPhotoUri(null);
-      setFrozenPhotoOrientation(undefined);
       setFrozenBoxes([]);
       setBoundingBoxes([]);
       isFreezing.current = false;
@@ -470,8 +358,7 @@ export default function ScanScreen() {
       // as a placeholder so the user sees something right away.
       setFrozenBoxes([...boundingBoxes]);
       setFrozenPhotoUri(`file://${photo.path}`);
-      setFrozenPhotoOrientation(photo.orientation ?? undefined);
-      console.log(`[Freeze] photo ${photo.width}x${photo.height} orientation=${photo.orientation} display=${layout.width}x${layout.height}`);
+      console.log(`[Freeze] photo ${photo.width}x${photo.height} display=${layout.width}x${layout.height}`);
       setIsFrozen(true);
 
       // Re-run OCR on the ENTIRE frozen photo to get finer, line-level boxes.
@@ -647,6 +534,7 @@ export default function ScanScreen() {
           isActive={isActive}
           photo={true}
           video={true}
+          outputOrientation="preview"
           onInitialized={() => setIsCameraReady(true)}
           onError={(e) => console.log('Camera error:', e)}
         />
@@ -684,7 +572,6 @@ export default function ScanScreen() {
             boundingBoxes={frozenBoxes}
             containerWidth={cameraLayout.width}
             containerHeight={cameraLayout.height}
-            photoOrientation={frozenPhotoOrientation}
             onBoxTap={(windowX, windowY) => {
               overlayRef.current?.identifyAtPoint(windowX, windowY);
             }}

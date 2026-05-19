@@ -53,7 +53,6 @@ interface FreezeZoomOverlayProps {
   boundingBoxes: BoundingBox[];
   containerWidth: number;
   containerHeight: number;
-  photoOrientation?: string;
   onBoxTap: (windowX: number, windowY: number) => void;
 }
 
@@ -147,7 +146,6 @@ export default function FreezeZoomOverlay({
   boundingBoxes,
   containerWidth,
   containerHeight,
-  photoOrientation,
   onBoxTap,
 }: FreezeZoomOverlayProps) {
   // ── Shared values ────────────────────────────────────────────────────────
