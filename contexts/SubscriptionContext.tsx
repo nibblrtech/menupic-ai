@@ -36,7 +36,6 @@ import Purchases, {
     type PurchasesOfferings,
     type PurchasesPackage,
 } from 'react-native-purchases';
-import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import { OfferingIds, Products, ScansPerProduct, configureRevenueCat } from '../services/RevenueCatService';
 import { useAuth } from './AuthContext';
 import { useProfile } from './ProfileContext';
@@ -94,11 +93,74 @@ const SubscriptionContext = createContext<SubscriptionState>({
   creditProductPurchase: async () => {},
 });
 
+type RecentConsumablePurchase = {
+  productId: string;
+  transactionId: string | null;
+  purchasedAtMs: number;
+};
+
+function toMillis(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const asNum = Number(value);
+    if (Number.isFinite(asNum)) return asNum;
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function getLatestConsumablePurchaseFromCustomerInfo(customerInfo: any): RecentConsumablePurchase | null {
+  const txns: RecentConsumablePurchase[] = [];
+
+  const fromArray = Array.isArray(customerInfo?.nonSubscriptionTransactions)
+    ? customerInfo.nonSubscriptionTransactions
+    : [];
+
+  for (const tx of fromArray) {
+    const productId: string | undefined =
+      tx?.productIdentifier ?? tx?.productId ?? tx?.storeProductIdentifier;
+    if (!productId || !(productId in ScansPerProduct)) continue;
+
+    const transactionId =
+      tx?.transactionIdentifier ?? tx?.id ?? tx?.transactionId ?? null;
+    const purchasedAtMs =
+      toMillis(tx?.purchaseDateMillis) ||
+      toMillis(tx?.purchaseDate) ||
+      toMillis(tx?.originalPurchaseDateMillis) ||
+      toMillis(tx?.originalPurchaseDate);
+
+    txns.push({ productId, transactionId, purchasedAtMs });
+  }
+
+  if (customerInfo?.nonSubscriptions && typeof customerInfo.nonSubscriptions === 'object') {
+    for (const [productId, arr] of Object.entries(customerInfo.nonSubscriptions as Record<string, any>)) {
+      if (!(productId in ScansPerProduct) || !Array.isArray(arr)) continue;
+      for (const tx of arr) {
+        const transactionId =
+          tx?.transactionIdentifier ?? tx?.id ?? tx?.transactionId ?? null;
+        const purchasedAtMs =
+          toMillis(tx?.purchaseDateMillis) ||
+          toMillis(tx?.purchaseDate) ||
+          toMillis(tx?.originalPurchaseDateMillis) ||
+          toMillis(tx?.originalPurchaseDate);
+        txns.push({ productId, transactionId, purchasedAtMs });
+      }
+    }
+  }
+
+  if (txns.length === 0) return null;
+
+  txns.sort((a, b) => b.purchasedAtMs - a.purchasedAtMs);
+  return txns[0] ?? null;
+}
+
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function SubscriptionProvider({ children }: PropsWithChildren) {
   const { effectiveUserId } = useAuth();
   const { profile, addScans, setScans, refreshProfile } = useProfile();
+  const creditedTransactionIdsRef = useRef<Set<string>>(new Set());
 
   const [isLoading, setIsLoading] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
@@ -153,11 +215,14 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
       const specificOffering =
         offeringsResult.all[OfferingIds.MENUPIC] ?? offeringsResult.current;
 
+      console.log('[RC Offerings] all keys:', Object.keys(offeringsResult.all), '| current:', offeringsResult.current?.identifier ?? 'none');
+
       if (specificOffering) {
         setMenuPicOffering(specificOffering);
 
         // Find IAP packages by product identifier within the offering's packages
         const pkgs = specificOffering.availablePackages;
+        console.log('[RC Offerings] packages:', pkgs.map(p => p.product.identifier));
         setStarterPackage(
           pkgs.find(p => p.product.identifier === Products.STARTER) ?? null
         );
@@ -351,6 +416,12 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
   const doShowPaywall = useCallback(async (): Promise<boolean> => {
     try {
+      // Lazy-load paywall UI to avoid app-start crashes when a dev build is
+      // out of date with current native dependencies.
+      const paywallModule = await import('react-native-purchases-ui');
+      const RevenueCatUI = paywallModule.default;
+      const PAYWALL_RESULT = paywallModule.PAYWALL_RESULT;
+
       const paywallOptions: any = { displayCloseButton: false };
       if (menuPicOffering) {
         paywallOptions.offering = menuPicOffering;
@@ -358,9 +429,37 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
 
       const result = await RevenueCatUI.presentPaywall(paywallOptions);
 
-      if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-        // We don't know exactly which package was tapped inside the RC paywall UI,
-        // so we refresh from the server to get the authoritative scan count.
+      if (result === PAYWALL_RESULT.PURCHASED) {
+        // RC modal paywall does not expose the selected package in this path.
+        // Derive the most recent consumable transaction from CustomerInfo,
+        // then run the same credit flow as direct package purchases.
+        const customerInfo = await Purchases.getCustomerInfo();
+        const latestPurchase = getLatestConsumablePurchaseFromCustomerInfo(customerInfo as any);
+
+        if (!latestPurchase) {
+          console.warn('[SubscriptionContext] Paywall purchase completed but no consumable transaction was found. Refreshing profile.');
+          await refreshProfile();
+          return true;
+        }
+
+        if (
+          latestPurchase.transactionId &&
+          creditedTransactionIdsRef.current.has(latestPurchase.transactionId)
+        ) {
+          if (__DEV__) {
+            console.log(`[SubscriptionContext] Skipping duplicate paywall credit for txn ${latestPurchase.transactionId}`);
+          }
+          return true;
+        }
+
+        await creditProductPurchase(latestPurchase.productId);
+        if (latestPurchase.transactionId) {
+          creditedTransactionIdsRef.current.add(latestPurchase.transactionId);
+        }
+        return true;
+      }
+
+      if (result === PAYWALL_RESULT.RESTORED) {
         await refreshProfile();
         return true;
       }
@@ -371,10 +470,16 @@ export function SubscriptionProvider({ children }: PropsWithChildren) {
         error.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR;
       if (!isCancelled) {
         console.error('[SubscriptionContext] Paywall error:', error);
+        if (String(error?.message ?? '').toLowerCase().includes('native module')) {
+          Alert.alert(
+            'Update Required',
+            'This development build is out of sync with current native modules. Rebuild the dev client and try again.',
+          );
+        }
       }
       return false;
     }
-  }, [menuPicOffering, refreshProfile]);
+  }, [menuPicOffering, refreshProfile, creditProductPurchase]);
 
   return (
     <SubscriptionContext.Provider

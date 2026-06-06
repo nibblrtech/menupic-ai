@@ -100,7 +100,7 @@ export default function MyPlanContent() {
           <ActivityIndicator size="small" color={Colors.textOnDark} />
         ) : (
           <View style={styles.pricePill}>
-            <Text style={styles.pricePillText}>{getPrice(starterPackage, '$2.99')}</Text>
+            <Text style={styles.pricePillText}>{getPrice(starterPackage, '$1.99')}</Text>
           </View>
         )}
       </Pressable>
@@ -125,7 +125,7 @@ export default function MyPlanContent() {
           <ActivityIndicator size="small" color={Colors.textOnDark} />
         ) : (
           <View style={styles.pricePill}>
-            <Text style={styles.pricePillText}>{getPrice(popularPackage, '$2.99')}</Text>
+            <Text style={styles.pricePillText}>{getPrice(popularPackage, '$4.99')}</Text>
           </View>
         )}
       </Pressable>
@@ -149,7 +149,7 @@ export default function MyPlanContent() {
           <ActivityIndicator size="small" color={Colors.textOnDark} />
         ) : (
           <View style={styles.pricePill}>
-            <Text style={styles.pricePillText}>{getPrice(travellerPackage, '$2.99')}</Text>
+            <Text style={styles.pricePillText}>{getPrice(travellerPackage, '$9.99')}</Text>
           </View>
         )}
       </Pressable>

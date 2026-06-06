@@ -12,9 +12,9 @@
  *  400 — missing user_id or no scans left
  *  500 — database error
  */
+import { getClientIp, isValidTrackedUserId } from '../../api/_identity';
+import { checkRateLimit } from '../../api/_rateLimit';
 import supabase from '../../services/SupabaseService';
-import { getClientIp, isValidTrackedUserId } from './_identity';
-import { checkRateLimit } from './_rateLimit';
 
 export async function POST(request: Request) {
   try {

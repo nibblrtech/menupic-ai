@@ -6,9 +6,9 @@
  *
  * Server-side only — uses SupabaseService (service-role key preferred).
  */
+import { getClientIp, isValidTrackedUserId } from '../../api/_identity';
+import { checkRateLimit } from '../../api/_rateLimit';
 import supabase from '../../services/SupabaseService';
-import { getClientIp, isValidTrackedUserId } from './_identity';
-import { checkRateLimit } from './_rateLimit';
 
 const DEFAULT_FREE_SCANS = 3;
 

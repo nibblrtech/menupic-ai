@@ -13,9 +13,9 @@
  * - Adds source scans to destination scans
  * - Zeroes source scans to avoid double transfer
  */
+import { getClientIp, isValidTrackedUserId } from '../../api/_identity';
+import { checkRateLimit } from '../../api/_rateLimit';
 import supabase from '../../services/SupabaseService';
-import { getClientIp, isValidTrackedUserId } from './_identity';
-import { checkRateLimit } from './_rateLimit';
 
 const DEFAULT_FREE_SCANS = 3;
 

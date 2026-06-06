@@ -3,16 +3,27 @@
 Build iOS development app:
 ```bash
 npx eas build --platform ios --profile development
+```
 
-android:
+Build Android development app:
+```bash
 npx eas build --platform android --profile development
 ```
 
 ### Run Development Build
 
-Build iOS development app:
+Start Metro for development client:
 ```bash
 npx expo start --dev-client
+```
+
+If device-to-Metro LAN networking is flaky, use tunnel mode:
+```bash
+npx expo start --dev-client --tunnel --clear
+```
+
+After changing native dependencies or Expo SDK package versions, rebuild and reinstall the dev client.
+Do not rely on an older installed dev build with newer JavaScript dependencies.
 
 
 ### API Routes Deployment
@@ -29,7 +40,7 @@ npx expo export --platform web --no-ssg
 ```bash
 npx eas deploy
 ```
-> Note: May not be necessary since origin is set to production routes
+Note: This may not be necessary if your Expo Router origin is already set to production routes.
 
 #### 3. Deploy API routes to production
 ```bash

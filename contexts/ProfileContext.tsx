@@ -96,10 +96,6 @@ export function ProfileProvider({ children }: PropsWithChildren) {
         prev.createdAt,
         prev.updatedAt,
         count,
-        prev.subscriptionProductId,
-        prev.subscriptionStartedAt,
-        prev.lastScanCreditAt,
-        prev.subscriptionActive,
       );
     });
   }, []);
@@ -117,10 +113,6 @@ export function ProfileProvider({ children }: PropsWithChildren) {
         prev.createdAt,
         prev.updatedAt,
         prev.scans + amount,
-        prev.subscriptionProductId,
-        prev.subscriptionStartedAt,
-        prev.lastScanCreditAt,
-        prev.subscriptionActive,
       );
     });
   }, []);
@@ -137,10 +129,6 @@ export function ProfileProvider({ children }: PropsWithChildren) {
         prev.createdAt,
         prev.updatedAt,
         prev.scans - 1,
-        prev.subscriptionProductId,
-        prev.subscriptionStartedAt,
-        prev.lastScanCreditAt,
-        prev.subscriptionActive,
       );
     });
 

@@ -12,9 +12,9 @@
  *  400 — missing / invalid fields
  *  500 — database error
  */
+import { getClientIp, isValidTrackedUserId } from '../../api/_identity';
+import { checkRateLimit } from '../../api/_rateLimit';
 import supabase from '../../services/SupabaseService';
-import { getClientIp, isValidTrackedUserId } from './_identity';
-import { checkRateLimit } from './_rateLimit';
 
 const ALLOWED_PRODUCT_SCAN_CREDITS: Record<string, number> = {
   'menupicstarter': 10,
